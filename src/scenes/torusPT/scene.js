@@ -25,36 +25,27 @@ function rotateY(v, theta) {
 }
 
 
-// parametric torus point:
-//  - theta: rotation angle around Y (any real number)
-//  - disk:  either { r, theta } in polar coords or { x, y } in cartesian (unit disk)
-//  - dest:  Vector3 to write into (optional)
-const parametricTorus = (theta, disk, dest = new Vector3()) => {
-    const Rad = 2; // torus major radius
+//takes in a real number theta (in 0,2pi) and a point in the disk (obj with coords {r:1,theta:2})
+//outputs a Vector3
+const parametricTorus = (theta,disk,dest=new Vector3()) => {
 
-    // figure out (x, y) on the unit disk
-    let x, y;
+    //give the torus a size:
+    const Rad = 2;
 
-    if ("r" in disk && "theta" in disk) {
-        // polar input
-        const r = disk.r;
-        const phi = disk.theta;
-        x = r * Math.cos(phi);
-        y = r * Math.sin(phi);
-    } else if ("x" in disk && "y" in disk) {
-        // cartesian input
-        x = disk.x;
-        y = disk.y;
-    } else {
-        throw new Error("disk must be {r, theta} or {x, y}");
-    }
+    //name the disk coordinates
+    let r = disk.r;
+    let phi = disk.theta;
 
-    // embed the disk in 3D: shift by Rad along +X
-    dest.set(x + Rad, y, 0);
+    //point in the disk
+    let diskPt = dest.set(r*Math.cos(phi),r*Math.sin(phi),0);
+    //move the disk off to the side
+    diskPt.x += Rad;
 
-    // rotate around Y by theta (assumes your rotateY(v, angle) mutates & returns v)
-    return rotateY(dest, theta);
-};
+    //rotate around by theta
+    dest = rotateY(dest,theta);
+    return dest;
+
+}
 
 
 //takes in a function f:D->D and a radius r
@@ -80,39 +71,11 @@ const f = function(diskPt){
     const r = diskPt.r;
     const theta = diskPt.theta;
 
-    let x1 = r*Math.cos(theta);
-    let y1 = r*Math.sin(theta);
+    let R = r+Math.sin(theta)/5.;
+    R = Math.atanh(R/1.5);
+    let T = theta-2*Math.sin(2*theta);
 
-    let R2 = r*r;
-    let T2 = 2*theta;
-    let x2 = R2*Math.cos(T2);
-    let y2 = R2*Math.sin(T2);
-
-    let R3 = r*r*r;
-    let T3 = 3*theta;
-    let x3 = R3*Math.cos(T3);
-    let y3 = R3*Math.sin(T3);
-
-    let R4 = r*r*r*r;
-    let T4 = 4*theta;
-    let x4 = R4*Math.cos(T4);
-    let y4 = R4*Math.sin(T4);
-
-    let x = x4/4+x3/3+x2/2-x1+0.1;
-    let y = y4/4+y3/3+y2/2-y1+0.2;
-
-    return {x:x/1.5,y:y/1.5};
-
-    // let R =0.8*r+Math.sin(r*theta)/5;
-    // R = Math.atanh(R/1.5);
-    // let T = theta;
-    //
-    //
-    // //add in a small constant term
-    // R += 0.5;
-    // //T += 0.3;
-    //
-    // return {r:R,theta:T};
+    return {r:R,theta:T};
 
 }
 
@@ -140,14 +103,14 @@ export default class TorusScene extends  Group{
         }
 
         let glassMat = new MeshPhysicalMaterial({
-            color:0xd1dde3,
+            color:0x95d5de,
                 //0xacd1e3,
                 //0xd1dde3,
             transparent:true,
             opacity:1,
-            clearcoat:1,
+            clearcoat:2,
             ior:1.01,
-            transmission:0.99,
+            transmission:0.95,
             side:DoubleSide,
             roughness:0,
         });
@@ -157,23 +120,23 @@ export default class TorusScene extends  Group{
 
 
         this.params = {
-            r:1,
+            r:0.5,
         }
 
 
 
         //make the graph of the identity
         const idCurve = torusGraph(id,1);
-        const idGeom = new TubeGeometry(idCurve, 128,0.075,16,true);
-        const idMat = new MeshPhysicalMaterial({color:0xb5504c,clearcoat:1,metalness:0,roughness:0.1});
+        const idGeom = new TubeGeometry(idCurve, 128,0.1,16,true);
+        const idMat = new MeshPhysicalMaterial({color:0xb5504c,clearcoat:1});
         this.idMesh = new Mesh(idGeom,idMat);
         this.add(this.idMesh);
 
 
         //make the graph of f
         const fCurve = torusGraph(f,this.params.r);
-        const fGeom = new TubeGeometry(fCurve, 128,0.075,16,true);
-        const fMat = new MeshPhysicalMaterial({color:0x475fd6,clearcoat:1,metalness:0,roughness:0.1});
+        const fGeom = new TubeGeometry(fCurve, 128,0.1,16,true);
+        const fMat = new MeshPhysicalMaterial({color:0xb5504c,clearcoat:1});
         this.fMesh = new Mesh(fGeom,fMat);
         this.add(this.fMesh);
 
@@ -182,12 +145,7 @@ export default class TorusScene extends  Group{
     updateGraph(r){
         this.fMesh.geometry.dispose();
         const fCurve = torusGraph(f,this.params.r);
-        this.fMesh.geometry = new TubeGeometry(fCurve, 128,0.075,16,true);
-
-
-        this.idMesh.geometry.dispose();
-        const idCurve = torusGraph(id,this.params.r);
-        this.idMesh.geometry= new TubeGeometry(idCurve, 128,0.075,16,true);
+        this.fMesh.geometry = new TubeGeometry(fCurve, 128,0.1,16,true);
     }
 
 

@@ -1,238 +1,185 @@
+// main.js — standard WebGLRenderer version (no three-gpu-pathtracer)
+
 import {
     WebGLRenderer,
     ACESFilmicToneMapping,
     PerspectiveCamera,
-    Color,
     Scene,
     Mesh,
     MeshPhysicalMaterial,
-    Vector2,
-    BoxGeometry, TorusKnotGeometry,
-    TorusGeometry, TubeGeometry, CylinderGeometry,
-    Vector3, Group, SphereGeometry, FloatType, DoubleSide, CatmullRomCurve3, LineCurve3,
+    BoxGeometry,
+    Color,
+    EquirectangularReflectionMapping,
+    SRGBColorSpace,
+    PMREMGenerator,
+    SpotLight,
+    PCFSoftShadowMap
 } from "three";
 
-import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
-import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
-import { EquirectangularReflectionMapping, SRGBColorSpace } from "three";
-
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-
-import {
-    GradientEquirectTexture,
-    WebGLPathTracer,
-    ShapedAreaLight, PhysicalSpotLight,PhysicalCamera,
-} from 'three-gpu-pathtracer';
-
-import {GUI} from "three/examples/jsm/libs/lil-gui.module.min.js";
+import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
+import { GUI } from "three/examples/jsm/libs/lil-gui.module.min.js";
 
 import TorusScene from "./scene.js";
 
-// 1) Import the EXR as a URL via Vite’s asset pipeline  <<<< LINE 1
-import envURL from "../../../assets/env/studio.exr"
+// 1) Import the EXR as a URL via Vite’s asset pipeline
+// import envURL from "../../assets/env/afternoon1k.hdr";
+import envURL from '../../assets/env/afternoon1k.hdr?url';
+import {HDRLoader} from "three/addons";
 
-
-// init scene and objects, and lights
-//--------------------------------------------
-
+// ------------------------
+// Scene & objects
+// ------------------------
 const scene = new Scene();
 
-
 const torus = new TorusScene();
-torus.position.set(0,1,0);
+torus.position.set(0, 1, 0);
 scene.add(torus);
 
-// spot light
-let spotLight = new PhysicalSpotLight( 0xffffff );
-spotLight.position.set( 2, 10.0, -10 );
-spotLight.angle = Math.PI / 2;
-spotLight.decay = 0;
-spotLight.penumbra = 1.0;
-spotLight.distance = 0.0;
-spotLight.intensity = 2.0;
-spotLight.radius = 0.5;
+// // Ground
+// const ground = new Mesh(
+//     new BoxGeometry(20, 0.1, 10),
+//     new MeshPhysicalMaterial({
+//         color: 0xffffff,
+//         clearcoat: 1,
+//         roughness: 0.5,
+//         metalness: 0,
+//     })
+// );
+// ground.receiveShadow = true;
+// ground.position.set(0, -1, 0);
+// scene.add(ground);
+//
+// // Back wall
+// const backWall = new Mesh(
+//     new BoxGeometry(20, 8, 0.1),
+//     new MeshPhysicalMaterial({})
+// );
+// backWall.receiveShadow = true;
+// backWall.position.set(0, 1, -5);
+// scene.add(backWall);
 
-// spot light shadow
+// ------------------------
+// Camera
+// ------------------------
+const camera = new PerspectiveCamera(60, 1, 0.1, 1000);
+camera.position.set(0, 5, 10);
+camera.lookAt(0, 0, 0);
+
+// ------------------------
+// Renderer
+// ------------------------
+const renderer = new WebGLRenderer({
+    antialias: true,
+    preserveDrawingBuffer: true, // for PNG saves
+});
+renderer.toneMapping = ACESFilmicToneMapping;
+renderer.outputColorSpace = SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = PCFSoftShadowMap; // optional, nicer shadows
+document.body.appendChild(renderer.domElement);
+
+// ------------------------
+// Lighting (standard)
+// ------------------------
+const spotLight = new SpotLight(0xffffff, 2.0);
+spotLight.position.set(2, 10.0, 10);
+spotLight.angle = Math.PI / 2;
+spotLight.decay = 0;     // physically-correct lights normally use decay>0; keep 0 to mimic your settings
+spotLight.distance = 0.0;
+spotLight.castShadow = true;
+
+// shadow settings
 spotLight.shadow.mapSize.width = 512;
 spotLight.shadow.mapSize.height = 512;
 spotLight.shadow.camera.near = 0.1;
-spotLight.shadow.camera.far = 10.0;
+spotLight.shadow.camera.far = 50.0;
 spotLight.shadow.focus = 1.0;
-spotLight.castShadow = true;
-scene.add( spotLight );
 
-// spot light target
-const targetObject = spotLight.target;
-targetObject.position.x = 1;
-targetObject.position.y = 0;
-targetObject.position.z = 1.05;
-scene.add( targetObject );
+scene.add(spotLight);
 
+// Light target
+spotLight.target.position.set(1, 0, 1.05);
+scene.add(spotLight.target);
 
-
-
-
-
-
-
-
-const ground = new Mesh(
-    new BoxGeometry( 100, 0.1, 100 ),
-    new MeshPhysicalMaterial({
-        color:0xffffff, clearcoat:1, roughness:0.5,metalness:0
-    }),
-);
-ground.position.set(0.,-1,0);
-scene.add(ground);
-
-// const backWall = new Mesh(
-//     new BoxGeometry( 100, 100, 0.1 ),
-//     new MeshPhysicalMaterial({
-//     }),
-// );
-// backWall.position.set(0,0,1);
-// scene.add(backWall);
-
-
-
-
-// camera
-//--------------------------------------------
-const camera = new PerspectiveCamera();
-camera.position.set( 0, 10, -20 );
-camera.lookAt( 0, 0, 0 );
-
-
-// const camera = new PhysicalCamera( 60, window.innerWidth / window.innerHeight, 0.025, 500 );
-// camera.position.set( - 0.262, 0.5276, - 1.1606 );
-// camera.apertureBlades = 0;
-// camera.fStop = 1.5;
-// camera.focusDistance = 1.1878;
-// let focusPoint = new Vector3();
-// focusPoint.set( 0,0,-0.25 );
-
-
-
-// set up the renderer
-//--------------------------------------------
-let renderer = new WebGLRenderer({
-    preserveDrawingBuffer:true,
-});
-renderer.toneMapping = ACESFilmicToneMapping;
-renderer.outputColorSpace = SRGBColorSpace; // proper color output
-document.body.appendChild( renderer.domElement );
-
-
-
-// set up the Path tracer
-//--------------------------------------------
-let pathTracer = new WebGLPathTracer( renderer );
-pathTracer.setScene( scene, camera );
-
-pathTracer.renderScale = Math.max( 1 / window.devicePixelRatio, 0.5 );;
-pathTracer.tiles.setScalar( 3 );
-pathTracer.bounces = 30.;
-
-
-
-//environ
-
-
-// new RGBELoader().loadAsync(envURL).then(tex => {
-//     tex.mapping = EquirectangularReflectionMapping;
-//     scene.environment = tex;
-//     scene.background = tex;
-//     scene.environmentIntensity = 1;
-//     pathTracer.updateEnvironment();
-//     pathTracer.reset();
+// // Make torus & backWall cast shadows if desired
+// torus.traverse(obj => {
+//     if (obj.isMesh) {
+//         obj.castShadow = true;
+//         obj.receiveShadow = false;
+//     }
 // });
+// backWall.castShadow = false;
 
+// ------------------------
+// Environment (EXR via PMREM)
+// ------------------------
+const pmrem = new PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
 
-new EXRLoader().loadAsync(envURL).then(tex => {
-    tex.mapping = EquirectangularReflectionMapping;
-    scene.environment = tex;
-    scene.background = tex;  // or null if you don’t want the sky visible
-    scene.environmentIntensity = 1;  // tune to taste
-    pathTracer.updateEnvironment();
-    pathTracer.reset();
+new HDRLoader().loadAsync(envURL).then((exrTex) => {
+    // For EXR: leave colorSpace in its default linear; no need to set SRGB on the texture.
+    // Create a filtered env map for PBR materials:
+    const envMap = pmrem.fromEquirectangular(exrTex).texture;
+
+    scene.environment = envMap;
+
+    // If you want the visible background to be the raw EXR, use:
+     exrTex.mapping = EquirectangularReflectionMapping;
+     scene.background = exrTex;
+     scene.backgroundBlurriness=0.;
+    //
+    // Or keep a neutral background:
+   // scene.background = new Color(0x000000);
+
+   // exrTex.dispose();
 });
 
+// ------------------------
+// Controls
+// ------------------------
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.33, -0.08);
+controls.update();
 
-
-// SCREENSHOTS
-//---------------------------------------------------
-
-function saveImage(canvas){
+// ------------------------
+// GUI (save PNG)
+// ------------------------
+function saveImage(canvas) {
     const date = new Date();
-    let day = date.getDate();
-    let month = date.getMonth() + 1;
-    let hour = date.getHours();
-    let minute = date.getMinutes();
-
-    let link = document.createElement('a');
-    link.download = `pathtrace ${month}-${day}-${hour}${minute}`+'.png';
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    const hour = date.getHours();
+    const minute = date.getMinutes();
+    const link = document.createElement("a");
+    link.download = `render ${month}-${day}-${hour}${minute}.png`;
     link.href = canvas.toDataURL("image/png");
-    //.replace("image/png", "image/octet-stream");
     link.click();
 }
 
-
 const gui = new GUI().close();
-let params = {
-    saveit: ()=>saveImage(renderer.domElement),
-};
-gui.add( params, 'saveit' );
+torus.addToUI(gui);
+gui.add({ save: () => saveImage(renderer.domElement) }, "save");
 
-
-
-//controls
-//--------------------------------------------
-let controls = new OrbitControls( camera, renderer.domElement );
-controls.target.set( 0, 0.33, - 0.08 );
-controls.addEventListener( 'change', () => pathTracer.updateCamera() );
-controls.update();
-// controls.addEventListener( 'change', () => {
-//     camera.focusDistance = camera.position.distanceTo( focusPoint ) - camera.near;
-//     pathTracer.updateCamera();
-// } );
-
-
-
-
-//animate loop
-//--------------------------------------------
-
-
-onResize();
-
-animate();
-
-window.addEventListener( 'resize', onResize );
-
-function animate() {
-
-    // if the camera position changes call "ptRenderer.reset()"
-    requestAnimationFrame( animate );
-
-    // update the camera and render one sample
-    pathTracer.renderSample();
-
-}
-
+// ------------------------
+// Resize & animate
+// ------------------------
 function onResize() {
-
-    // update rendering resolution
     const w = window.innerWidth;
     const h = window.innerHeight;
-
-    renderer.setSize( w, h );
-    renderer.setPixelRatio( window.devicePixelRatio );
-
-    const aspect = w / h;
-    camera.aspect = aspect;
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-
-    pathTracer.setScene( scene, camera );
-
 }
+window.addEventListener("resize", onResize);
+onResize();
 
+function animate() {
+    requestAnimationFrame(animate);
+    // If TorusScene animates internally, call its update here as needed:
+    // torus.update?.(performance.now() / 1000);
+
+    renderer.render(scene, camera);
+}
+animate();
