@@ -13,7 +13,7 @@
  * the relative winding meter.
  */
 
-import type { GraphCurve, LabeledLoop, Vec2 } from "../types.ts";
+import type { GraphCurve, LabeledLoop, Vec2, Vec3 } from "../types.ts";
 import { vec2, vec3 } from "../types.ts";
 import type { SphereDiskMap } from "../maps/sphereMaps.ts";
 import { spherePoint } from "../maps/sphereMaps.ts";
@@ -21,6 +21,9 @@ import type { MeterReading, ProofEvent, ProofModel } from "./types.ts";
 import { labeled } from "./types.ts";
 import { graphDistanceAtIndex } from "../analysis/collisions.ts";
 import { relativeWinding } from "../analysis/winding.ts";
+import { linkingNumber } from "../analysis/linking.ts";
+import { findCollision } from "../analysis/collisionFinder.ts";
+import type { DifferenceField, WindingTransition } from "../analysis/collisionFinder.ts";
 
 /** Γ_f(φ): the graph of f restricted to the latitude φ. */
 export function latitudeGraphLoop(
@@ -103,6 +106,76 @@ export function borsukUlamModel(f: SphereDiskMap): ProofModel {
                 { name: "twist", value: twist, display: twist.toFixed(2) },
             ];
         },
+
+        status(curves): string {
+            const [gf, gfbar] = curves as [GraphCurve, GraphCurve];
+            // the twist IS the linking number of the two graph curves
+            const link = linkingNumber(gf, gfbar);
+            if (link.lk === null) {
+                return `curves touch — antipodal pair! (min |f − f̄| = ${link.separation.toFixed(3)})`;
+            }
+            return link.lk === 0
+                ? "unlinked · twist = 0"
+                : `linked · twist = ${link.lk}`;
+        },
+    };
+}
+
+// ---------------------------------------------------------------- finder
+
+export interface AntipodalPairResult {
+    /** true when the residual is at solver precision */
+    found: boolean;
+    /** the point x on the sphere with f(x) = f(−x); the pair is (x, −x) */
+    x: Vec3;
+    phi: number;
+    theta: number;
+    /** the shared disk value f(x) = f(−x) */
+    value: Vec2;
+    /** |f(x) − f(−x)| */
+    residual: number;
+    /** the twist transition that localized it (null for degenerate maps
+     *  whose twist never changes, e.g. odd maps with pole pairs) */
+    transition: WindingTransition | null;
+}
+
+/**
+ * Find an antipodal pair f(x) = f(−x) the way the proof does
+ * (collisionFinder.ts): bisect the latitude interval where the twist of
+ * (Γ_f, Γ_f̄) jumps, then Newton-trace the collision
+ * d(φ, θ) = f(x(φ,θ)) − f(x(π−φ, θ+π)) = 0 to machine precision.
+ */
+export function findAntipodalPair(
+    f: SphereDiskMap,
+    options: { time?: number } = {},
+): AntipodalPairResult {
+    const time = options.time ?? 0;
+    const x = vec3();
+    const xbar = vec3();
+    const fx = vec2();
+    const d: DifferenceField = (phi, theta, out) => {
+        spherePoint(phi, theta, x);
+        spherePoint(Math.PI - phi, theta + Math.PI, xbar);
+        f.evalSphere(x, time, fx);
+        f.evalSphere(xbar, time, out);
+        out.x = fx.x - out.x;
+        out.y = fx.y - out.y;
+    };
+
+    const result = findCollision(d, [0.02, Math.PI / 2], {
+        sClamp: [1e-3, Math.PI / 2],
+    });
+
+    spherePoint(result.s, result.theta, x);
+    f.evalSphere(x, time, fx);
+    return {
+        found: result.residual < 1e-8,
+        x: vec3(x.x, x.y, x.z),
+        phi: result.s,
+        theta: result.theta,
+        value: vec2(fx.x, fx.y),
+        residual: result.residual,
+        transition: result.transition,
     };
 }
 

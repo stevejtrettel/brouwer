@@ -49,6 +49,22 @@ export interface ProofModel {
      * e.g. "linked · Lk = 1". Optional.
      */
     status?(curves: GraphCurve[]): string;
+    /**
+     * Fixed features of the current map/field worth marking in the solid
+     * torus, independent of the proof parameter — e.g. every fixed point
+     * of f, each shown where its collision will occur. Optional.
+     */
+    landmarks?(): Landmark[];
+}
+
+export interface Landmark {
+    /** the meridian where the landmark lives */
+    theta: number;
+    /** its position in the fiber disk */
+    disk: Vec2;
+    /** local index when known (colors the marker) */
+    index: number | null;
+    label: string;
 }
 
 /** Convenience: wrap a raw closure as a LabeledLoop. */

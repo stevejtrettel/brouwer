@@ -22,8 +22,22 @@ import type { MeterReading, ProofEvent, ProofModel } from "./types.ts";
 import { labeled } from "./types.ts";
 import { coreDistanceAtIndex } from "../analysis/collisions.ts";
 import { windingNumber } from "../analysis/winding.ts";
+import { findSphereFieldZeros } from "../analysis/sphereFieldZeros.ts";
+import type { SphereCensus } from "../analysis/sphereFieldZeros.ts";
 
 export function poincareModel(field: TangentVectorField): ProofModel {
+    // the zero census depends only on the field, not the loop parameter
+    let censusKey = "";
+    let census: SphereCensus | null = null;
+    const getCensus = (): SphereCensus => {
+        const key = JSON.stringify(field.params);
+        if (census === null || key !== censusKey) {
+            census = findSphereFieldZeros(field);
+            censusKey = key;
+        }
+        return census;
+    };
+
     return {
         id: "poincare",
         title: "Poincaré / hairy-ball theorem",
@@ -64,11 +78,24 @@ export function poincareModel(field: TangentVectorField): ProofModel {
                 min = Math.min(min, coreDistanceAtIndex(g, i));
             }
             const w = windingNumber(g);
+            const { zeros, indexSum } = getCensus();
             return [
                 { name: "min |v|", value: min, display: min.toFixed(3) },
                 // near-integer when the graph stays away from the core;
                 // meaningless (and flagged by min |v|) when it doesn't
                 { name: "winding", value: w, display: w.toFixed(2) },
+                { name: "zeros of v", value: zeros.length, display: String(zeros.length) },
+                {
+                    // Poincaré–Hopf: indices sum to χ(S²) = 2, always
+                    name: "Σ index",
+                    value: indexSum ?? NaN,
+                    display:
+                        indexSum === null
+                            ? "—"
+                            : indexSum === 2
+                              ? "2 = χ(S²) ✓"
+                              : `${indexSum} ✗ (should be 2)`,
+                },
             ];
         },
     };

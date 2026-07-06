@@ -32,6 +32,12 @@ export class Marker extends Mesh {
         this.scale.setScalar(this.baseRadius * (1 + 0.12 * Math.sin(4 * time)));
     }
 
+    setColor(color: number): void {
+        const material = this.material as MeshPhysicalMaterial;
+        material.color.set(color);
+        material.emissive.set(color);
+    }
+
     dispose(): void {
         this.geometry.dispose();
         (this.material as MeshPhysicalMaterial).dispose();

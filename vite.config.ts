@@ -10,6 +10,7 @@ export default defineConfig({
             input: {
                 index: resolve(__dirname, "index.html"),
                 brouwer: resolve(__dirname, "demos/brouwer/index.html"),
+                disk: resolve(__dirname, "demos/disk/index.html"),
                 borsuk: resolve(__dirname, "demos/borsuk/index.html"),
                 poincare: resolve(__dirname, "demos/poincare/index.html"),
             },

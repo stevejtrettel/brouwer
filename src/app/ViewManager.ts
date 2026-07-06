@@ -47,7 +47,9 @@ export class ViewManager {
         return viewport;
     }
 
-    /** Called with the drawing-buffer size in device pixels. */
+    /** Called with the canvas size in CSS pixels — NOT the drawing-buffer
+     *  size. renderer.setViewport/setScissor multiply by the device pixel
+     *  ratio internally, so all rect math here stays in CSS space. */
     resize(width: number, height: number): void {
         this.width = width;
         this.height = height;
@@ -90,6 +92,29 @@ export class ViewManager {
             renderer.render(vp.scene, vp.camera);
         }
         renderer.setScissorTest(false);
+    }
+
+    /** Map a pointer position (CSS pixels, top-left origin) to world
+     *  coordinates in an ORTHOGRAPHIC viewport. Returns false if the
+     *  pointer is outside the viewport's rect. */
+    pointerToWorld(
+        vp: Viewport,
+        cssX: number,
+        cssY: number,
+        cssWidth: number,
+        cssHeight: number,
+        out: { x: number; y: number },
+    ): boolean {
+        const cam = vp.camera as OrthographicCamera;
+        if (!cam.isOrthographicCamera) return false;
+        const fx = cssX / cssWidth;
+        const fy = 1 - cssY / cssHeight;
+        const lx = (fx - vp.rect.x) / vp.rect.w;
+        const ly = (fy - vp.rect.y) / vp.rect.h;
+        if (lx < 0 || lx > 1 || ly < 0 || ly > 1) return false;
+        out.x = cam.position.x + cam.left + lx * (cam.right - cam.left);
+        out.y = cam.position.y + cam.bottom + ly * (cam.top - cam.bottom);
+        return true;
     }
 
     /** Which viewport contains a pointer position (CSS pixels, top-left origin)? */

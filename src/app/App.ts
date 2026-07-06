@@ -8,7 +8,6 @@ import {
     Clock,
     PMREMGenerator,
     SRGBColorSpace,
-    Vector2,
     WebGLRenderer,
     type Scene,
     type Texture,
@@ -67,8 +66,8 @@ export class App {
         const h = window.innerHeight;
         this.renderer.setPixelRatio(window.devicePixelRatio || 1);
         this.renderer.setSize(w, h);
-        const size = this.renderer.getDrawingBufferSize(sizeScratch);
-        this.views.resize(size.x, size.y);
+        // CSS pixels: setViewport/setScissor apply the pixel ratio themselves
+        this.views.resize(w, h);
     }
 
     /** Render the composed layout at `scale`× and download it as a PNG. */
@@ -89,9 +88,6 @@ export class App {
 
         this.renderer.setPixelRatio(pixelRatio);
         this.renderer.setSize(w, h);
-        const size = this.renderer.getDrawingBufferSize(sizeScratch);
-        this.views.resize(size.x, size.y);
+        this.views.resize(w, h);
     }
 }
-
-const sizeScratch = new Vector2();

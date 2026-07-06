@@ -2,7 +2,13 @@ import { describe, it, expect } from "vitest";
 import { vec2, vec3, length2 } from "../src/math/types.ts";
 import { softClampToDisk, tangentProject } from "../src/math/maps/project.ts";
 import { identityMap, radialContraction, displacedContraction, swirlMap } from "../src/math/maps/diskMaps.ts";
-import { equatorialProjection, distortedProjection, spherePoint } from "../src/math/maps/sphereMaps.ts";
+import {
+    equatorialProjection,
+    distortedProjection,
+    offsetProjection,
+    spherePoint,
+} from "../src/math/maps/sphereMaps.ts";
+import { findAntipodalPair } from "../src/math/proofs/borsukUlam.ts";
 import { projectedConstantField, rotationalField } from "../src/math/maps/tangentFields.ts";
 import { brouwerModel } from "../src/math/proofs/brouwer.ts";
 import { borsukUlamModel } from "../src/math/proofs/borsukUlam.ts";
@@ -102,6 +108,36 @@ describe("Borsuk–Ulam model", () => {
         const events = model.detect(0.02, curves, 0.05);
         expect(events.length).toBeGreaterThan(0);
         expect(events[0]!.kind).toBe("antipodal-pair");
+    });
+
+    it("offset projection is NON-degenerate: unlinked near the pole, odd twist at the equator", () => {
+        const model = borsukUlamModel(offsetProjection());
+        const nearPole = sampleModel(model, 0.05);
+        const equator = sampleModel(model, Math.PI / 2);
+        expect(model.status!(nearPole)).toContain("unlinked");
+        const twistPole = model.meters(nearPole).find((m) => m.name === "twist")!;
+        expect(twistPole.value).toBeCloseTo(0, 4);
+        const twistEq = model.meters(equator).find((m) => m.name === "twist")!;
+        expect(Math.abs(twistEq.value % 2)).toBeCloseTo(1, 4);
+        expect(model.status!(equator)).toContain("linked");
+    });
+
+    it("findAntipodalPair recovers f(x) = f(−x) to machine precision", () => {
+        const f = offsetProjection(0.35, 0.1, 0.15);
+        const pair = findAntipodalPair(f);
+        expect(pair.found).toBe(true);
+        expect(pair.transition).not.toBeNull(); // localized by a genuine twist jump
+
+        // verify independently of the finder's own residual
+        const x = vec3();
+        const fx = vec2();
+        const fxbar = vec2();
+        spherePoint(pair.phi, pair.theta, x);
+        f.evalSphere(x, 0, fx);
+        f.evalSphere(vec3(-x.x, -x.y, -x.z), 0, fxbar);
+        expect(Math.hypot(fx.x - fxbar.x, fx.y - fxbar.y)).toBeLessThan(1e-8);
+        // the even offset (bx, by) moves the shared value off the disk center
+        expect(Math.hypot(pair.value.x, pair.value.y)).toBeGreaterThan(0.05);
     });
 
     it("distorted projection keeps values in the disk", () => {

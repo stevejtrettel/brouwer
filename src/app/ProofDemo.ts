@@ -13,11 +13,12 @@
  * allocation-free (refillGraphCurve + GraphTube.refit).
  */
 
-import { Color, OrthographicCamera, PerspectiveCamera, Scene, Vector2 } from "three";
+import { Color, OrthographicCamera, PerspectiveCamera, Scene } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import GUI from "lil-gui";
 
 import { App } from "./App.ts";
+import type { ViewRect } from "./ViewManager.ts";
 import { SolidTorus } from "../math/torus.ts";
 import type { GraphCurve } from "../math/types.ts";
 import { vec3 } from "../math/types.ts";
@@ -33,6 +34,8 @@ import { SliceDisk } from "../components/SliceDisk.ts";
 import { Marker } from "../components/Marker.ts";
 
 const MAX_MARKERS = 8;
+const MAX_LANDMARKS = 12;
+const SADDLE_COLOR = 0x8d4fd3; // violet for index −1; theme.marker gold otherwise
 
 export interface ProofDemoOptions {
     model: ProofModel;
@@ -42,6 +45,9 @@ export interface ProofDemoOptions {
     epsilon?: number;
     /** add map/field-specific GUI controls; call demo.refresh() on change */
     controls?: (gui: GUI, demo: ProofDemo) => void;
+    /** override the default two-panel layout (e.g. to make room for extra
+     *  viewports the demo adds itself via demo.app.views) */
+    layout?: { torus?: ViewRect; slice?: ViewRect };
 }
 
 export class ProofDemo {
@@ -55,6 +61,7 @@ export class ProofDemo {
     readonly meridian: MeridianDisk;
     private slice: SliceDisk;
     private markers: Marker[] = [];
+    private landmarkDots: Marker[] = [];
     private caption: HTMLElement;
     private statusLine: HTMLElement;
 
@@ -62,6 +69,7 @@ export class ProofDemo {
     private readonly N: number;
     private readonly epsilon: number;
     private meterReadout: Record<string, string> = {};
+    private refreshHooks: ((demo: ProofDemo) => void)[] = [];
     private paramCtrl!: ReturnType<GUI["add"]>;
     private thetaCtrl!: ReturnType<GUI["add"]>;
 
@@ -112,6 +120,14 @@ export class ProofDemo {
             for (const m of this.markers) m.animate(time);
         });
 
+        // static landmarks (e.g. every fixed point of the map) — small,
+        // steady dots showing where each collision will occur
+        for (let i = 0; i < MAX_LANDMARKS; i++) {
+            const dot = new Marker(0.055);
+            this.landmarkDots.push(dot);
+            torusScene.add(dot);
+        }
+
         const torusCamera = new PerspectiveCamera(45, 1, 0.1, 100);
         torusCamera.position.set(0, 4.6, 7.4);
         torusCamera.lookAt(0, 0, 0);
@@ -119,7 +135,7 @@ export class ProofDemo {
             name: "torus",
             scene: torusScene,
             camera: torusCamera,
-            rect: { x: 0, y: 0, w: 0.72, h: 1 },
+            rect: options.layout?.torus ?? { x: 0, y: 0, w: 0.72, h: 1 },
         });
 
         const controls = new OrbitControls(torusCamera, this.app.renderer.domElement);
@@ -147,13 +163,10 @@ export class ProofDemo {
             name: "slice",
             scene: sliceScene,
             camera: sliceCamera,
-            rect: { x: 0.72, y: 0, w: 0.28, h: 1 },
+            rect: options.layout?.slice ?? { x: 0.72, y: 0, w: 0.28, h: 1 },
             orthoHalfHeight: 1.2,
         });
-        this.app.views.resize(
-            this.app.renderer.getDrawingBufferSize(sizeScratch).x,
-            this.app.renderer.getDrawingBufferSize(sizeScratch).y,
-        );
+        this.app.views.resize(window.innerWidth, window.innerHeight);
 
         // ---- overlay & controls ----
         const overlay = buildOverlay(this.model.title);
@@ -183,6 +196,13 @@ export class ProofDemo {
         this.gui.add({ png: () => this.app.exportPNG(this.model.id) }, "png").name("save PNG");
 
         this.app.start();
+    }
+
+    /** Register extra work to run after every refresh — used by demos that
+     *  add their own viewports (domain views etc.). Runs once immediately. */
+    addRefreshHook(fn: (demo: ProofDemo) => void): void {
+        this.refreshHooks.push(fn);
+        fn(this);
     }
 
     /** Jump the demo to a specific state (e.g. a finder result), keeping the
@@ -217,11 +237,12 @@ export class ProofDemo {
 
         const events = this.model.detect(this.state.s, this.curves, this.epsilon);
         this.placeMarkers(events);
+        this.placeLandmarks();
         this.caption.textContent = describeEvents(events);
 
         const status = this.model.status?.(this.curves) ?? "";
         this.statusLine.textContent = status;
-        this.statusLine.classList.toggle("linked", /linked · Lk = -?[1-9]/.test(status));
+        this.statusLine.classList.toggle("linked", status.startsWith("linked"));
         this.statusLine.classList.toggle("touching", status.includes("touch"));
 
         for (const meter of this.model.meters(this.curves)) {
@@ -229,6 +250,7 @@ export class ProofDemo {
         }
 
         this.updateSliceView();
+        for (const fn of this.refreshHooks) fn(this);
     }
 
     /** Slice-only update (θ slider) — no curve recomputation. */
@@ -243,6 +265,22 @@ export class ProofDemo {
             (e) => angularIndexDistance(e.index, index, this.N) < this.N / 64,
         );
         this.slice.showEvent(near ? near.disk : null);
+    }
+
+    private placeLandmarks(): void {
+        const landmarks = this.model.landmarks?.() ?? [];
+        for (let i = 0; i < MAX_LANDMARKS; i++) {
+            const dot = this.landmarkDots[i]!;
+            const landmark = landmarks[i];
+            if (!landmark) {
+                dot.visible = false;
+                continue;
+            }
+            dot.visible = true;
+            dot.setColor(landmark.index === -1 ? SADDLE_COLOR : theme.marker);
+            this.torus.embed(landmark.theta, landmark.disk.x, landmark.disk.y, markerPos);
+            dot.position.set(markerPos.x, markerPos.y, markerPos.z);
+        }
     }
 
     private placeMarkers(events: ProofEvent[]): void {
@@ -309,4 +347,3 @@ function buildOverlay(title: string): { status: HTMLElement; caption: HTMLElemen
 }
 
 const markerPos = vec3();
-const sizeScratch = new Vector2();

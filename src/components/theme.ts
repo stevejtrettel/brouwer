@@ -42,6 +42,9 @@ export const theme = {
         rim: 0x33313b,
         segment: 0x9a9484,
     },
+
+    /** multiplies the texture on orientation-reversed (folded-over) regions */
+    foldTint: 0xd98d7e,
 } as const;
 
 export function roleColor(role: CurveRole): number {

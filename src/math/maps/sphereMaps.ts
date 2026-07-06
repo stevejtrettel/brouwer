@@ -36,9 +36,40 @@ export function equatorialProjection(): SphereDiskMap {
 }
 
 /**
+ * Offset projection f(x, y, z) = clamp(x + c·z + bx, y + by) — the
+ * canonical NON-degenerate Borsuk–Ulam example.
+ *
+ * The odd term c·z separates the pole values (f(N) ≈ (c + bx, by) vs
+ * f(S) ≈ (−c + bx, by)), so small latitudes give honestly unlinked graph
+ * curves with twist 0, while the equator keeps its forced odd twist — the
+ * transition, and the antipodal pair, happen at an interior latitude.
+ *
+ * The even offset (bx, by) matters too: the difference f(x) − f(−x) only
+ * sees the ODD part of f, so for an odd map (any pure projection) every
+ * antipodal pair has value exactly 0 — the collision always happens at the
+ * disk center. (bx, by) breaks oddness and moves the shared value somewhere
+ * generic.
+ */
+export function offsetProjection(c = 0.35, bx = 0.1, by = 0.15): SphereDiskMap {
+    const params = { c, bx, by };
+    const tmp = vec2();
+    return {
+        id: "offset-projection",
+        name: "offset projection",
+        params,
+        evalSphere: (x, _t, out) => {
+            set2(tmp, x.x + params.c * x.z + params.bx, x.y + params.by);
+            return softClampToDisk(out, tmp);
+        },
+    };
+}
+
+/**
  * Height-distorted projection f(x, y, z) = a(z)·(x, y) with a(z) = 1 + k·z,
- * soft-clamped. k breaks the north/south symmetry so f(N) ≠ f(S) stories
- * work; k = 0 recovers plain projection.
+ * soft-clamped. NOTE: this map is degenerate as a Borsuk–Ulam example —
+ * both poles map to 0, so f(N) = f(S) trivially, the antipodal pair sits at
+ * the poles, and the twist is odd at EVERY latitude (no unlinked phase).
+ * Kept as a preset precisely to contrast with offsetProjection.
  */
 export function distortedProjection(k = 0.6): SphereDiskMap {
     const params = { k };
