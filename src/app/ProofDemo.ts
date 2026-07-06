@@ -62,6 +62,8 @@ export class ProofDemo {
     private readonly N: number;
     private readonly epsilon: number;
     private meterReadout: Record<string, string> = {};
+    private paramCtrl!: ReturnType<GUI["add"]>;
+    private thetaCtrl!: ReturnType<GUI["add"]>;
 
     constructor(options: ProofDemoOptions) {
         this.model = options.model;
@@ -160,11 +162,11 @@ export class ProofDemo {
 
         this.gui = new GUI({ title: "controls" });
         const [lo, hi] = this.model.paramRange;
-        this.gui
+        this.paramCtrl = this.gui
             .add(this.state, "s", lo, hi, (hi - lo) / 500)
             .name(this.model.paramName)
             .onChange(() => this.refresh());
-        this.gui
+        this.thetaCtrl = this.gui
             .add(this.state, "theta", 0, 2 * Math.PI, 0.01)
             .name("slice θ")
             .onChange(() => this.updateSliceView());
@@ -181,6 +183,25 @@ export class ProofDemo {
         this.gui.add({ png: () => this.app.exportPNG(this.model.id) }, "png").name("save PNG");
 
         this.app.start();
+    }
+
+    /** Jump the demo to a specific state (e.g. a finder result), keeping the
+     *  GUI sliders in sync. Values are clamped to their ranges. */
+    setState(next: { s?: number; theta?: number }): void {
+        const [lo, hi] = this.model.paramRange;
+        if (next.s !== undefined) this.state.s = Math.min(hi, Math.max(lo, next.s));
+        if (next.theta !== undefined) {
+            this.state.theta = ((next.theta % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+        }
+        this.paramCtrl.updateDisplay();
+        this.thetaCtrl.updateDisplay();
+        this.refresh();
+    }
+
+    /** Write a line into the overlay caption (overrides the event text
+     *  until the next refresh). */
+    announce(text: string): void {
+        this.caption.textContent = text;
     }
 
     /** Recompute everything downstream of the proof parameter or the map. */

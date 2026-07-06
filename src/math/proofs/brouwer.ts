@@ -17,6 +17,8 @@ import type { MeterReading, ProofEvent, ProofModel } from "./types.ts";
 import { labeled } from "./types.ts";
 import { graphDistanceAtIndex } from "../analysis/collisions.ts";
 import { linkingNumber } from "../analysis/linking.ts";
+import { findCollision } from "../analysis/collisionFinder.ts";
+import type { DifferenceField, WindingTransition } from "../analysis/collisionFinder.ts";
 
 /** The restriction i_r as a DiskLoop. */
 export function identityLoop(r: number): LabeledLoop {
@@ -117,4 +119,55 @@ function midpoint(a: GraphCurve, b: GraphCurve, i: number): Vec2 {
         (a.disk[2 * i]! + b.disk[2 * i]!) / 2,
         (a.disk[2 * i + 1]! + b.disk[2 * i + 1]!) / 2,
     );
+}
+
+// ---------------------------------------------------------------- finder
+
+export interface FixedPointResult {
+    /** true when the residual is at solver precision */
+    found: boolean;
+    /** the fixed point x* = r·e^{iθ} with f(x*) = x* */
+    x: Vec2;
+    r: number;
+    theta: number;
+    /** |f(x*) − x*| */
+    residual: number;
+    /** the linking transition that localized it (null for center-degenerate maps) */
+    transition: WindingTransition | null;
+}
+
+/**
+ * Find a fixed point of f the way the proof does (collisionFinder.ts):
+ * bisect the r-interval where Lk(Γ_f, Γ_i) jumps, then Newton-trace the
+ * collision d(r, θ) = f(r·e^{iθ}) − r·e^{iθ} = 0 to machine precision.
+ *
+ * Finds ONE fixed point (the first transition bracketed by the coarse scan);
+ * maps with several have the others at different transitions or windings.
+ */
+export function findBrouwerFixedPoint(
+    f: DiskMap,
+    options: { rMax?: number; time?: number } = {},
+): FixedPointResult {
+    const rMax = options.rMax ?? 1;
+    const time = options.time ?? 0;
+    const x = vec2();
+    const d: DifferenceField = (r, theta, out) => {
+        set2(x, r * Math.cos(theta), r * Math.sin(theta));
+        f.evalDisk(x, time, out);
+        out.x -= x.x;
+        out.y -= x.y;
+    };
+
+    // scan starts just off r = 0 (where every d-loop degenerates to a point);
+    // Newton may still walk down to r = 0 for center fixed points
+    const result = findCollision(d, [1e-3, rMax], { sClamp: [0, rMax] });
+
+    return {
+        found: result.residual < 1e-8,
+        x: vec2(result.s * Math.cos(result.theta), result.s * Math.sin(result.theta)),
+        r: result.s,
+        theta: result.theta,
+        residual: result.residual,
+        transition: result.transition,
+    };
 }
