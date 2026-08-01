@@ -10,19 +10,14 @@
  * Γ_f(r) and Γ_i(r) for some r.
  */
 
-import type { GraphCurve, LabeledLoop, Vec2 } from "../types.ts";
+import type { LabeledLoop, Vec2 } from "../types.ts";
 import { set2, vec2 } from "../types.ts";
 import type { DiskMap } from "../maps/diskMaps.ts";
-import type { MeterReading, ProofEvent, ProofModel } from "./types.ts";
 import { labeled } from "./types.ts";
-import { graphDistanceAtIndex } from "../analysis/collisions.ts";
-import { linkingNumber } from "../analysis/linking.ts";
 import { findCollision } from "../analysis/collisionFinder.ts";
 import type { DifferenceField, WindingTransition } from "../analysis/collisionFinder.ts";
 import { findFieldZeros } from "../analysis/degree.ts";
 import type { PlaneField } from "../analysis/degree.ts";
-import { createDiskGrid, pushforwardInto, orientationCounts } from "../diskGrid.ts";
-import type { OrientationCounts } from "../diskGrid.ts";
 import type { CensusOptions } from "../analysis/degree.ts";
 
 /** The restriction i_r as a DiskLoop. */
@@ -49,145 +44,6 @@ export function mapLoop(f: DiskMap, r: number, time = 0): LabeledLoop {
 
 function formatR(r: number): string {
     return r.toFixed(2);
-}
-
-export function brouwerModel(f: DiskMap): ProofModel {
-    // the fixed-point census depends only on f (not on r), so cache it and
-    // recompute only when the map's parameters actually change
-    let censusKey = "";
-    let census: FixedPointCensus | null = null;
-    const getCensus = (): FixedPointCensus => {
-        const key = JSON.stringify(f.params);
-        if (census === null || key !== censusKey) {
-            census = findAllFixedPoints(f);
-            censusKey = key;
-        }
-        return census;
-    };
-
-    // fold census (discrete Jacobian over a triangulated disk) — also a
-    // property of f alone, cached the same way
-    let foldsKey = "";
-    let folds: OrientationCounts | null = null;
-    const foldGrid = createDiskGrid(32, 64);
-    const foldPositions = new Float32Array(2 * foldGrid.V);
-    const getFolds = (): OrientationCounts => {
-        const key = JSON.stringify(f.params);
-        if (folds === null || key !== foldsKey) {
-            pushforwardInto(foldGrid, f, 0, foldPositions);
-            folds = orientationCounts(foldGrid, foldPositions);
-            foldsKey = key;
-        }
-        return folds;
-    };
-
-    return {
-        id: "brouwer",
-        title: "Brouwer fixed point theorem",
-        paramName: "r",
-        paramRange: [0.02, 1],
-        paramDefault: 0.6,
-
-        loopsAt(r: number): LabeledLoop[] {
-            return [identityLoop(r), mapLoop(f, r)];
-        },
-
-        detect(_r, curves, epsilon): ProofEvent[] {
-            const [gi, gf] = curves as [GraphCurve, GraphCurve];
-            const events: ProofEvent[] = [];
-            // report each local minimum below ε, not just the global one —
-            // a map can have several fixed points on one circle
-            const N = Math.min(gi.N, gf.N);
-            for (let i = 0; i < N; i++) {
-                const d = graphDistanceAtIndex(gi, gf, i);
-                if (d >= epsilon) continue;
-                const prev = graphDistanceAtIndex(gi, gf, (i + N - 1) % N);
-                const next = graphDistanceAtIndex(gi, gf, (i + 1) % N);
-                if (d <= prev && d <= next) {
-                    events.push({
-                        kind: "fixed-point",
-                        index: i,
-                        theta: gi.theta[i]!,
-                        error: d,
-                        disk: midpoint(gi, gf, i),
-                    });
-                }
-            }
-            return events;
-        },
-
-        meters(curves): MeterReading[] {
-            const [gi, gf] = curves as [GraphCurve, GraphCurve];
-            let min = Infinity;
-            for (let i = 0; i < Math.min(gi.N, gf.N); i++) {
-                min = Math.min(min, graphDistanceAtIndex(gi, gf, i));
-            }
-            // Lk(Γ_f, Γ_i) = winding of the displacement f − i (linking.ts);
-            // this IS the proof invariant: 0 near r = 0, 1 at r = 1
-            const link = linkingNumber(gf, gi);
-            const { fixedPoints, indexSum, degenerate } = getCensus();
-            return [
-                { name: "min |f − i|", value: min, display: min.toFixed(3) },
-                {
-                    name: "Lk(Γf, Γi)",
-                    value: link.raw,
-                    display: link.lk === null ? "—" : String(link.lk),
-                },
-                {
-                    name: "fixed points",
-                    value: fixedPoints.length,
-                    display: degenerate ? "∞ (f ≈ id on a region)" : String(fixedPoints.length),
-                },
-                {
-                    // is f an embedding, or does the image fold over itself?
-                    name: "folds",
-                    value: getFolds().foldFraction,
-                    display:
-                        getFolds().reversing === 0
-                            ? "none"
-                            : `${(100 * getFolds().foldFraction).toFixed(0)}% reversed`,
-                },
-                {
-                    // Lefschetz: the displacement indices always sum to 1
-                    name: "Σ index",
-                    value: indexSum ?? NaN,
-                    display:
-                        indexSum === null
-                            ? "—"
-                            : indexSum === 1
-                              ? "1 = L(f) ✓"
-                              : `${indexSum} ✗ (should be 1)`,
-                },
-            ];
-        },
-
-        landmarks() {
-            return getCensus().fixedPoints.map((fp) => ({
-                theta: fp.theta,
-                disk: fp.x,
-                index: fp.index,
-                label: `fixed point (index ${fp.index ?? "?"})`,
-            }));
-        },
-
-        status(curves): string {
-            const [gi, gf] = curves as [GraphCurve, GraphCurve];
-            const link = linkingNumber(gf, gi);
-            if (link.lk === null) {
-                return `curves touch — fixed point! (min |f − i| = ${link.separation.toFixed(3)})`;
-            }
-            return link.lk === 0
-                ? "unlinked · Lk = 0"
-                : `linked · Lk = ${link.lk}`;
-        },
-    };
-}
-
-function midpoint(a: GraphCurve, b: GraphCurve, i: number): Vec2 {
-    return vec2(
-        (a.disk[2 * i]! + b.disk[2 * i]!) / 2,
-        (a.disk[2 * i + 1]! + b.disk[2 * i + 1]!) / 2,
-    );
 }
 
 // ---------------------------------------------------------------- census
@@ -260,15 +116,22 @@ export function findAllFixedPoints(
         options,
     );
 
+    // fixed points pinned exactly on ∂D² are common (any drag that presses
+    // the sheet against the boundary clamp balances there) and are located
+    // only to cell accuracy — allow that slack, then report ON the disk
     const fixedPoints = zeros
-        .filter((z) => Math.hypot(z.x, z.y) <= 1 + 1e-9)
-        .map((z) => ({
-            x: vec2(z.x, z.y),
-            r: Math.hypot(z.x, z.y),
-            theta: ((Math.atan2(z.y, z.x) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI),
-            index: z.index,
-            residual: z.residual,
-        }));
+        .filter((z) => Math.hypot(z.x, z.y) <= 1.02)
+        .map((z) => {
+            const r = Math.hypot(z.x, z.y);
+            const clamp = r > 1 ? 1 / r : 1;
+            return {
+                x: vec2(z.x * clamp, z.y * clamp),
+                r: Math.min(r, 1),
+                theta: ((Math.atan2(z.y, z.x) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI),
+                index: z.index,
+                residual: z.residual,
+            };
+        });
     return { fixedPoints, indexSum, degenerate: truncated };
 }
 

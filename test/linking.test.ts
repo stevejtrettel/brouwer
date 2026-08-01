@@ -13,8 +13,9 @@ import { linkingNumber, gaussLinkingNumber } from "../src/math/analysis/linking.
 import { sampleGraphCurve } from "../src/math/graphCurve.ts";
 import { SolidTorus } from "../src/math/torus.ts";
 import { set2 } from "../src/math/types.ts";
-import { brouwerModel } from "../src/math/proofs/brouwer.ts";
+import { identityLoop, mapLoop } from "../src/math/proofs/brouwer.ts";
 import { displacedContraction, swirlMap } from "../src/math/maps/diskMaps.ts";
+import type { DiskMap } from "../src/math/maps/diskMaps.ts";
 
 const N = 512;
 const torus = new SolidTorus();
@@ -94,39 +95,32 @@ describe("Gauss integral cross-check", () => {
 });
 
 describe("Brouwer linking narrative", () => {
-    function curvesAt(model: ReturnType<typeof brouwerModel>, r: number) {
-        return model.loopsAt(r).map((l) => sampleGraphCurve(l.loop, N, l.role, l.label));
+    function curvesAt(f: DiskMap, r: number) {
+        return [
+            sampleGraphCurve(identityLoop(r).loop, N, "identity"),
+            sampleGraphCurve(mapLoop(f, r).loop, N, "map"),
+        ] as const;
     }
 
     it("small r: unlinked (displacement ≈ f(0) is nearly constant)", () => {
         for (const f of [displacedContraction(0.55, 0.3, 0.15), swirlMap()]) {
-            const model = brouwerModel(f);
-            const [gi, gf] = curvesAt(model, 0.02) as [
-                ReturnType<typeof sampleGraphCurve>,
-                ReturnType<typeof sampleGraphCurve>,
-            ];
+            const [gi, gf] = curvesAt(f, 0.02);
             expect(linkingNumber(gf, gi).lk).toBe(0);
         }
     });
 
     it("r = 1: linked once, for ANY map without boundary fixed points (Poincaré–Bohl)", () => {
         for (const f of [displacedContraction(0.55, 0.3, 0.15), swirlMap()]) {
-            const model = brouwerModel(f);
-            const [gi, gf] = curvesAt(model, 1) as [
-                ReturnType<typeof sampleGraphCurve>,
-                ReturnType<typeof sampleGraphCurve>,
-            ];
+            const [gi, gf] = curvesAt(f, 1);
             expect(linkingNumber(gf, gi).lk).toBe(1);
         }
     });
 
-    it("meters and status report the linked state", () => {
-        const model = brouwerModel(displacedContraction(0.55, 0.3, 0.15));
-        const small = curvesAt(model, 0.02);
-        const full = curvesAt(model, 1);
-        expect(model.status!(small)).toContain("unlinked");
-        expect(model.status!(full)).toContain("linked · Lk = 1");
-        const lkMeter = model.meters(full).find((m) => m.name.startsWith("Lk"))!;
-        expect(lkMeter.display).toBe("1");
+    it("linking flips from unlinked (small r) to linked once (r = 1)", () => {
+        const f = displacedContraction(0.55, 0.3, 0.15);
+        const [giS, gfS] = curvesAt(f, 0.02);
+        const [giF, gfF] = curvesAt(f, 1);
+        expect(linkingNumber(gfS, giS).lk).toBe(0);
+        expect(linkingNumber(gfF, giF).lk).toBe(1);
     });
 });

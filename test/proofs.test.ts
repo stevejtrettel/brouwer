@@ -8,21 +8,37 @@ import {
     offsetProjection,
     spherePoint,
 } from "../src/math/maps/sphereMaps.ts";
-import { findAntipodalPair } from "../src/math/proofs/borsukUlam.ts";
+import {
+    latitudeGraphLoop,
+    antipodalGraphLoop,
+    findAntipodalPair,
+} from "../src/math/proofs/borsukUlam.ts";
 import { projectedConstantField, rotationalField } from "../src/math/maps/tangentFields.ts";
-import { brouwerModel } from "../src/math/proofs/brouwer.ts";
-import { borsukUlamModel } from "../src/math/proofs/borsukUlam.ts";
-import { poincareModel } from "../src/math/proofs/poincare.ts";
+import { identityLoop, mapLoop, findAllFixedPoints } from "../src/math/proofs/brouwer.ts";
+import { latitudeLoop, tangentGraphLoop } from "../src/math/frames.ts";
+import { graphDistanceAtIndex, coreDistanceAtIndex } from "../src/math/analysis/collisions.ts";
+import { linkingNumber } from "../src/math/analysis/linking.ts";
+import { relativeWinding, windingNumber } from "../src/math/analysis/winding.ts";
 import { sampleGraphCurve } from "../src/math/graphCurve.ts";
+import type { GraphCurve } from "../src/math/types.ts";
+import type { DiskLoop } from "../src/math/types.ts";
 import { SolidTorus } from "../src/math/torus.ts";
 import { dot3 } from "../src/math/types.ts";
 
 const N = 512;
 
-function sampleModel(model: ReturnType<typeof brouwerModel>, s: number) {
-    return model
-        .loopsAt(s)
-        .map((l) => sampleGraphCurve(l.loop, N, l.role, l.label));
+const sample = (loop: DiskLoop): GraphCurve => sampleGraphCurve(loop, N, "map");
+
+function minGraphDist(ga: GraphCurve, gb: GraphCurve): number {
+    let m = Infinity;
+    for (let i = 0; i < Math.min(ga.N, gb.N); i++) m = Math.min(m, graphDistanceAtIndex(ga, gb, i));
+    return m;
+}
+
+function minCoreDist(g: GraphCurve): number {
+    let m = Infinity;
+    for (let i = 0; i < g.N; i++) m = Math.min(m, coreDistanceAtIndex(g, i));
+    return m;
 }
 
 describe("projections", () => {
@@ -55,71 +71,67 @@ describe("projections", () => {
     });
 });
 
-describe("Brouwer model", () => {
+describe("Brouwer maps", () => {
     it("identity map collides everywhere (every point is fixed)", () => {
-        const model = brouwerModel(identityMap());
-        const curves = sampleModel(model, 0.5);
-        const meter = model.meters(curves).find((m) => m.name.startsWith("min"))!;
-        expect(meter.value).toBeCloseTo(0, 10);
+        const gi = sample(identityLoop(0.5).loop);
+        const gf = sample(mapLoop(identityMap(), 0.5).loop);
+        expect(minGraphDist(gi, gf)).toBeCloseTo(0, 10);
     });
 
     it("radial contraction has no fixed point on any circle r > 0", () => {
-        const model = brouwerModel(radialContraction(0.5));
+        const f = radialContraction(0.5);
         for (const r of [0.1, 0.5, 1]) {
-            const curves = sampleModel(model, r);
             // |f_r − i_r| = (1 − a)·r uniformly
-            const meter = model.meters(curves)[0]!;
-            expect(meter.value).toBeCloseTo(0.5 * r, 5);
-            expect(model.detect(r, curves, 0.01)).toHaveLength(0);
+            expect(minGraphDist(sample(identityLoop(r).loop), sample(mapLoop(f, r).loop))).toBeCloseTo(
+                0.5 * r,
+                5,
+            );
         }
+        // the only fixed point is the center
+        const census = findAllFixedPoints(f);
+        expect(census.indexSum).toBe(1);
+        const nearest = Math.min(...census.fixedPoints.map((p) => Math.hypot(p.x.x, p.x.y)));
+        expect(nearest).toBeLessThan(0.05);
     });
 
-    it("detects the fixed point of a displaced contraction", () => {
-        // f(x) = a·x + c has fixed point x* = c/(1 − a), |x*| = 0.5 here
-        const model = brouwerModel(displacedContraction(0.4, 0.3, 0));
-        const rStar = 0.5;
-        const curves = sampleModel(model, rStar);
-        const events = model.detect(rStar, curves, 0.02);
-        expect(events.length).toBeGreaterThan(0);
-        expect(events[0]!.kind).toBe("fixed-point");
-        expect(events[0]!.theta).toBeCloseTo(0, 1); // fixed point on +x axis
+    it("finds the fixed point of a displaced contraction", () => {
+        // f(x) = a·x + c has fixed point x* = c/(1 − a) = (0.5, 0) here
+        const census = findAllFixedPoints(displacedContraction(0.4, 0.3, 0));
+        expect(census.fixedPoints.length).toBeGreaterThan(0);
+        expect(census.indexSum).toBe(1);
+        const fp = census.fixedPoints[0]!;
+        expect(fp.x.x).toBeCloseTo(0.5, 1);
+        expect(fp.x.y).toBeCloseTo(0, 1);
     });
 });
 
-describe("Borsuk–Ulam model", () => {
+describe("Borsuk–Ulam maps", () => {
     it("equator twist is odd for the projection map", () => {
-        const model = borsukUlamModel(equatorialProjection());
-        const curves = sampleModel(model, Math.PI / 2);
-        const twist = model.meters(curves).find((m) => m.name === "twist")!;
-        expect(Math.abs(twist.value % 2)).toBeCloseTo(1, 4);
+        const f = equatorialProjection();
+        const gf = sample(latitudeGraphLoop(f, Math.PI / 2).loop);
+        const gfbar = sample(antipodalGraphLoop(f, Math.PI / 2).loop);
+        expect(Math.abs(relativeWinding(gf, gfbar) % 2)).toBeCloseTo(1, 4);
     });
 
-    it("finds antipodal pairs for the distorted projection somewhere in φ", () => {
-        // f(x) = (1 + k z)(x, y): antipodal equality needs f(x) = f(−x),
-        // i.e. (1 + kz)(x,y) = −(1 − kz)(x,y) — only at (x,y) ≈ 0, the poles;
-        // approaching φ → 0 the curves collapse toward f(N) vs f(S)... so use
-        // the equator where f(x) = −f(−x) forces a crossing iff f hits 0.
-        // Simplest guaranteed catch: projection map at the equator has
-        // f̄ = −f, so |f − f̄| = 2|f| > 0 — instead verify the sweep exposes
-        // shrinking min-distance near the poles for the symmetric map k = 0
-        // at φ → 0 (both curves collapse to f(N) = f(S) = 0).
-        const model = borsukUlamModel(equatorialProjection());
-        const curves = sampleModel(model, 0.02);
-        const events = model.detect(0.02, curves, 0.05);
-        expect(events.length).toBeGreaterThan(0);
-        expect(events[0]!.kind).toBe("antipodal-pair");
+    it("near the pole the symmetric map forces a collision", () => {
+        // both curves collapse toward f(N) = f(S) = 0 as φ → 0
+        const f = equatorialProjection();
+        const gf = sample(latitudeGraphLoop(f, 0.02).loop);
+        const gfbar = sample(antipodalGraphLoop(f, 0.02).loop);
+        expect(minGraphDist(gf, gfbar)).toBeLessThan(0.05);
     });
 
     it("offset projection is NON-degenerate: unlinked near the pole, odd twist at the equator", () => {
-        const model = borsukUlamModel(offsetProjection());
-        const nearPole = sampleModel(model, 0.05);
-        const equator = sampleModel(model, Math.PI / 2);
-        expect(model.status!(nearPole)).toContain("unlinked");
-        const twistPole = model.meters(nearPole).find((m) => m.name === "twist")!;
-        expect(twistPole.value).toBeCloseTo(0, 4);
-        const twistEq = model.meters(equator).find((m) => m.name === "twist")!;
-        expect(Math.abs(twistEq.value % 2)).toBeCloseTo(1, 4);
-        expect(model.status!(equator)).toContain("linked");
+        const f = offsetProjection();
+        const gfPole = sample(latitudeGraphLoop(f, 0.05).loop);
+        const gfbarPole = sample(antipodalGraphLoop(f, 0.05).loop);
+        expect(linkingNumber(gfPole, gfbarPole).lk).toBeCloseTo(0, 10);
+        expect(relativeWinding(gfPole, gfbarPole)).toBeCloseTo(0, 4);
+
+        const gfEq = sample(latitudeGraphLoop(f, Math.PI / 2).loop);
+        const gfbarEq = sample(antipodalGraphLoop(f, Math.PI / 2).loop);
+        expect(Math.abs(relativeWinding(gfEq, gfbarEq) % 2)).toBeCloseTo(1, 4);
+        expect(linkingNumber(gfEq, gfbarEq).lk).not.toBe(0);
     });
 
     it("findAntipodalPair recovers f(x) = f(−x) to machine precision", () => {
@@ -152,30 +164,24 @@ describe("Borsuk–Ulam model", () => {
     });
 });
 
-describe("Poincaré model", () => {
-    it("rotational field graph never leaves the core region silently: zeros at poles", () => {
-        const model = poincareModel(rotationalField(0, 0, 1));
-        // near the pole the field magnitude → 0: graph hugs the core
-        const nearPole = sampleModel(model, 0.06);
-        const meter = model.meters(nearPole).find((m) => m.name === "min |v|")!;
-        expect(meter.value).toBeLessThan(0.1);
+describe("Poincaré fields", () => {
+    it("rotational field graph hugs the core near the pole (min |v| → 0)", () => {
+        const g = sample(tangentGraphLoop(rotationalField(0, 0, 1), latitudeLoop(0.06)));
+        expect(minCoreDist(g)).toBeLessThan(0.1);
     });
 
     it("projected-constant field crosses the core when the latitude passes a zero", () => {
-        const model = poincareModel(projectedConstantField(1, 0, 0));
-        // zeros at ±x̂ lie on the equator: φ = π/2 latitudes pass through them
-        const curves = sampleModel(model, Math.PI / 2);
-        const events = model.detect(Math.PI / 2, curves, 0.05);
-        expect(events.length).toBeGreaterThan(0);
-        expect(events[0]!.kind).toBe("core-crossing");
+        // zeros at ±x̂ lie on the equator: the φ = π/2 latitude passes through them
+        const g = sample(tangentGraphLoop(projectedConstantField(1, 0, 0), latitudeLoop(Math.PI / 2)));
+        expect(minCoreDist(g)).toBeLessThan(0.05);
     });
 
     it("winding flips sign from north-pole loop to south-pole loop", () => {
-        const model = poincareModel(projectedConstantField(1, 0, 0));
-        const north = model.meters(sampleModel(model, 0.1));
-        const south = model.meters(sampleModel(model, Math.PI - 0.1));
-        expect(north.find((m) => m.name === "winding")!.value).toBeCloseTo(1, 3);
-        expect(south.find((m) => m.name === "winding")!.value).toBeCloseTo(-1, 3);
+        const v = projectedConstantField(1, 0, 0);
+        const north = sample(tangentGraphLoop(v, latitudeLoop(0.1)));
+        const south = sample(tangentGraphLoop(v, latitudeLoop(Math.PI - 0.1)));
+        expect(windingNumber(north)).toBeCloseTo(1, 3);
+        expect(windingNumber(south)).toBeCloseTo(-1, 3);
     });
 });
 

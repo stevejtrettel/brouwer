@@ -1,77 +1,12 @@
 /**
- * ProofModel — the interface each theorem implements. A model is a thin
- * configuration over the shared engine: it says which disk-valued loops
- * exist at each value of the proof parameter, and what "forced event" to
- * look for. Demos own sampling, rendering, and UI; models own only math.
+ * Small shared helper for the proof loop-builders (identityLoop, mapLoop,
+ * latitudeGraphLoop, …): wrap a raw disk-valued closure with its role and
+ * label so demos can color and name the curve.
  */
 
-import type { DiskLoop, GraphCurve, LabeledLoop, Vec2 } from "../types.ts";
-
-export type ProofEventKind = "fixed-point" | "antipodal-pair" | "core-crossing";
-
-export interface ProofEvent {
-    kind: ProofEventKind;
-    /** sample index and θ where the event occurs */
-    index: number;
-    theta: number;
-    /** the detector residual — |f − i|, |f(x) − f(−x)|, or |p| */
-    error: number;
-    /** the shared disk point (midpoint of the near-collision) */
-    disk: Vec2;
-}
-
-export interface MeterReading {
-    name: string;
-    value: number;
-    /** optional pre-formatted display string */
-    display?: string;
-}
-
-export interface ProofModel {
-    id: string;
-    title: string;
-    /** display name of the proof parameter: 'r', 'φ', 't' */
-    paramName: string;
-    paramRange: [number, number];
-    /** a sensible starting value for demos */
-    paramDefault: number;
-    /** the disk-valued loops at parameter s, in draw order */
-    loopsAt(s: number): LabeledLoop[];
-    /**
-     * Detect forced events on the sampled curves (same order as loopsAt).
-     * Illustrative, not a proof engine: ε-closeness at the sample grid.
-     */
-    detect(s: number, curves: GraphCurve[], epsilon: number): ProofEvent[];
-    /** live numerical meters (twist, winding, min-error) */
-    meters(curves: GraphCurve[]): MeterReading[];
-    /**
-     * A one-line topological status shown prominently in the overlay,
-     * e.g. "linked · Lk = 1". Optional.
-     */
-    status?(curves: GraphCurve[]): string;
-    /**
-     * Fixed features of the current map/field worth marking in the solid
-     * torus, independent of the proof parameter — e.g. every fixed point
-     * of f, each shown where its collision will occur. Optional.
-     */
-    landmarks?(): Landmark[];
-}
-
-export interface Landmark {
-    /** the meridian where the landmark lives */
-    theta: number;
-    /** its position in the fiber disk */
-    disk: Vec2;
-    /** local index when known (colors the marker) */
-    index: number | null;
-    label: string;
-}
+import type { DiskLoop, LabeledLoop } from "../types.ts";
 
 /** Convenience: wrap a raw closure as a LabeledLoop. */
-export function labeled(
-    loop: DiskLoop,
-    role: LabeledLoop["role"],
-    label: string,
-): LabeledLoop {
+export function labeled(loop: DiskLoop, role: LabeledLoop["role"], label: string): LabeledLoop {
     return { loop, role, label };
 }

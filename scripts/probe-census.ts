@@ -78,3 +78,19 @@ for (const [label, tx, ty] of [["fold+perp drag", 0.5, 0], ["fold+glide drag", 0
     }
     report("twist (top→right, bottom→left)", p);
 }
+
+// 5) pull-apart: two strokes stretching the middle over itself
+{
+    const p = new Float32Array(grid.domain);
+    for (const [cxs, cys, txs, tys] of [[-0.35, 0.03, -0.34, 0.05], [0.35, -0.02, 0.36, -0.04]] as const) {
+        for (let i = 0; i < grid.V; i++) {
+            const dx = p[2 * i]! - cxs, dy = p[2 * i + 1]! - cys;
+            const w = Math.exp(-(dx * dx + dy * dy) / (2 * 0.42 * 0.42));
+            let px = p[2 * i]! + w * txs, py = p[2 * i + 1]! + w * tys;
+            const r = Math.hypot(px, py);
+            if (r > 1) { px /= r; py /= r; }
+            p[2 * i] = px; p[2 * i + 1] = py;
+        }
+    }
+    report("pull-apart", p);
+}

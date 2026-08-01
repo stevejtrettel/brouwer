@@ -13,15 +13,11 @@
  * the relative winding meter.
  */
 
-import type { GraphCurve, LabeledLoop, Vec2, Vec3 } from "../types.ts";
+import type { LabeledLoop, Vec2, Vec3 } from "../types.ts";
 import { vec2, vec3 } from "../types.ts";
 import type { SphereDiskMap } from "../maps/sphereMaps.ts";
 import { spherePoint } from "../maps/sphereMaps.ts";
-import type { MeterReading, ProofEvent, ProofModel } from "./types.ts";
 import { labeled } from "./types.ts";
-import { graphDistanceAtIndex } from "../analysis/collisions.ts";
-import { relativeWinding } from "../analysis/winding.ts";
-import { linkingNumber } from "../analysis/linking.ts";
 import { findCollision } from "../analysis/collisionFinder.ts";
 import type { DifferenceField, WindingTransition } from "../analysis/collisionFinder.ts";
 
@@ -57,68 +53,6 @@ export function antipodalGraphLoop(
         "antipodal-map",
         "f̄",
     );
-}
-
-export function borsukUlamModel(f: SphereDiskMap): ProofModel {
-    return {
-        id: "borsuk-ulam",
-        title: "Borsuk–Ulam theorem",
-        paramName: "φ",
-        paramRange: [0.02, Math.PI / 2],
-        paramDefault: Math.PI / 2,
-
-        loopsAt(phi: number): LabeledLoop[] {
-            return [latitudeGraphLoop(f, phi), antipodalGraphLoop(f, phi)];
-        },
-
-        detect(_phi, curves, epsilon): ProofEvent[] {
-            const [gf, gfbar] = curves as [GraphCurve, GraphCurve];
-            const events: ProofEvent[] = [];
-            const N = Math.min(gf.N, gfbar.N);
-            for (let i = 0; i < N; i++) {
-                const d = graphDistanceAtIndex(gf, gfbar, i);
-                if (d >= epsilon) continue;
-                const prev = graphDistanceAtIndex(gf, gfbar, (i + N - 1) % N);
-                const next = graphDistanceAtIndex(gf, gfbar, (i + 1) % N);
-                if (d <= prev && d <= next) {
-                    events.push({
-                        kind: "antipodal-pair",
-                        index: i,
-                        theta: gf.theta[i]!,
-                        error: d,
-                        disk: midpoint(gf, gfbar, i),
-                    });
-                }
-            }
-            return events;
-        },
-
-        meters(curves): MeterReading[] {
-            const [gf, gfbar] = curves as [GraphCurve, GraphCurve];
-            let min = Infinity;
-            for (let i = 0; i < Math.min(gf.N, gfbar.N); i++) {
-                min = Math.min(min, graphDistanceAtIndex(gf, gfbar, i));
-            }
-            const twist = relativeWinding(gf, gfbar);
-            return [
-                { name: "min |f − f̄|", value: min, display: min.toFixed(3) },
-                // meaningless when the curves touch — the UI should warn there
-                { name: "twist", value: twist, display: twist.toFixed(2) },
-            ];
-        },
-
-        status(curves): string {
-            const [gf, gfbar] = curves as [GraphCurve, GraphCurve];
-            // the twist IS the linking number of the two graph curves
-            const link = linkingNumber(gf, gfbar);
-            if (link.lk === null) {
-                return `curves touch — antipodal pair! (min |f − f̄| = ${link.separation.toFixed(3)})`;
-            }
-            return link.lk === 0
-                ? "unlinked · twist = 0"
-                : `linked · twist = ${link.lk}`;
-        },
-    };
 }
 
 // ---------------------------------------------------------------- finder
@@ -177,11 +111,4 @@ export function findAntipodalPair(
         residual: result.residual,
         transition: result.transition,
     };
-}
-
-function midpoint(a: GraphCurve, b: GraphCurve, i: number): Vec2 {
-    return vec2(
-        (a.disk[2 * i]! + b.disk[2 * i]!) / 2,
-        (a.disk[2 * i + 1]! + b.disk[2 * i + 1]!) / 2,
-    );
 }
