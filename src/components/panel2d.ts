@@ -122,10 +122,19 @@ function ribbonIndex(N: number): BufferAttribute {
     return new BufferAttribute(idx, 1);
 }
 
-/** A pooled landmark dot (fixed point etc.), colored by index. */
+/** A pooled landmark dot (fixed point etc.): a colored fill with a crisp
+ *  charcoal border so it reads on any texture underneath. */
 export class DiskDot extends Mesh {
+    private rim: Mesh;
+
     constructor(radius = 0.035) {
         super(new CircleGeometry(radius, 32), new MeshBasicMaterial({ color: theme.marker }));
+        this.rim = new Mesh(
+            new RingGeometry(radius * 0.92, radius * 1.25, 32),
+            new MeshBasicMaterial({ color: theme.slice.rim }),
+        );
+        this.rim.position.z = 0.0005;
+        this.add(this.rim);
         this.visible = false;
     }
 
@@ -136,5 +145,7 @@ export class DiskDot extends Mesh {
     dispose(): void {
         this.geometry.dispose();
         (this.material as MeshBasicMaterial).dispose();
+        this.rim.geometry.dispose();
+        (this.rim.material as MeshBasicMaterial).dispose();
     }
 }

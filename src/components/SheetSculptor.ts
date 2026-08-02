@@ -23,8 +23,9 @@
 import type { Scene } from "three";
 import type { App } from "../app/App.ts";
 import type { Viewport } from "../app/ViewManager.ts";
-import type { DiskGrid, PLDiskMap } from "../math/diskGrid.ts";
+import type { DiskGrid, SheetTopology } from "../math/diskGrid.ts";
 import {
+    buildAdjacency,
     buildNeighborhoods,
     buildSpringEdges,
     smoothDisplacements,
@@ -48,8 +49,19 @@ export interface SheetSculptorOptions {
     viewport: Viewport;
     /** scene the rim/pinch feedback dots are added to */
     scene: Scene;
-    grid: DiskGrid;
-    sheet: PLDiskMap;
+    /** the disk grid — supplies topology, rest state, AND the rim fold-grips */
+    grid?: DiskGrid;
+    /** OR explicit topology for non-disk sheets (the flattened sphere image) */
+    topology?: SheetTopology;
+    /** 2V rest positions for smoothing reference + spring rest lengths
+     *  (default grid.domain; REQUIRED with `topology`) */
+    rest?: Float32Array;
+    /** fold-grip vertex indices (default: 12 rim vertices from the grid;
+     *  pass [] to disable the fold gesture — closed sheets have no rim) */
+    gripVertices?: number[];
+    /** anything holding 2V interleaved positions with snapshot/restore
+     *  (PLDiskMap, PLSphereMap) */
+    sheet: { positions: Float32Array; snapshot(): Float32Array; restore(snap: Float32Array): void };
     brush?: SheetBrush;
     /** panel (image) coords → sheet coords; default identity */
     toSheet?: (p: Vec2, out: Vec2) => void;
@@ -61,6 +73,10 @@ export interface SheetSculptorOptions {
     gripColor?: number;
     /** rim fold-grip dot radius (default 0.042) */
     gripRadius?: number;
+    /** pointer distance that counts as clicking a grip (default 3× the dot
+     *  radius) — keep tight on crumpled sheets, where grips bunch up and a
+     *  generous hit area steals every grab into a fold */
+    gripHitRadius?: number;
     /** cheap: after every mutation (re-render) */
     onEdit: () => void;
     /** expensive: on release and settle-end (recompute census) */
@@ -83,15 +99,25 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
     const sigmaScale = opts.brushSigmaScale ?? (() => 1);
     const gripColor = opts.gripColor ?? theme.roles.identity;
     const gripRadius = opts.gripRadius ?? 0.042;
+    const gripHitRadius = opts.gripHitRadius ?? 3 * gripRadius;
 
-    const hood = buildNeighborhoods(grid);
-    const springs = buildSpringEdges(grid);
-    const smoothScratch = new Float32Array(2 * grid.V);
+    const topo = opts.topology ?? grid;
+    if (!topo) throw new Error("SheetSculptor needs a grid or an explicit topology");
+    const rest = opts.rest ?? grid!.domain;
+    const hood = grid ? buildNeighborhoods(grid) : buildAdjacency(topo);
+    const springs = buildSpringEdges({ V: topo.V, T: topo.T, indices: topo.indices, domain: rest });
+    const restSheet = { V: topo.V, domain: rest };
+    const smoothScratch = new Float32Array(2 * topo.V);
 
     // rim fold-grips: 12 evenly spaced boundary vertices of the grid
-    const gripVertices: number[] = [];
-    for (let i = 0; i < 12; i++) {
-        gripVertices.push(1 + (grid.rings - 1) * grid.sectors + i * (grid.sectors / 12));
+    // (or the caller's own list — [] disables folding)
+    const gripVertices: number[] = opts.gripVertices ?? [];
+    if (!opts.gripVertices && grid) {
+        for (let i = 0; i < 12; i++) {
+            gripVertices.push(
+                1 + (grid.rings - 1) * grid.sectors + Math.floor(i * (grid.sectors / 12)),
+            );
+        }
     }
 
     const rimDots = gripVertices.map(() => {
@@ -153,7 +179,7 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
         drag = null;
 
         // rim grips take priority when clicked directly
-        let bestRim = 0.12;
+        let bestRim = gripHitRadius;
         for (let g = 0; g < rimDots.length; g++) {
             const d = Math.hypot(rimDots[g]!.position.x - pointer.x, rimDots[g]!.position.y - pointer.y);
             if (d < bestRim) {
@@ -172,7 +198,7 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
             // the brush moves together
             toSheet(pointer, pre);
             let nearest = Infinity;
-            for (let i = 0; i < grid.V; i++) {
+            for (let i = 0; i < topo.V; i++) {
                 const d = Math.hypot(sheet.positions[2 * i]! - pre.x, sheet.positions[2 * i + 1]! - pre.y);
                 if (d < nearest) nearest = d;
             }
@@ -180,9 +206,9 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
 
             const sigma = brush.sigma / sigmaScale();
             const s2 = 2 * sigma * sigma;
-            const weights = new Float32Array(grid.V);
+            const weights = new Float32Array(topo.V);
             const affected: number[] = [];
-            for (let i = 0; i < grid.V; i++) {
+            for (let i = 0; i < topo.V; i++) {
                 const dx = sheet.positions[2 * i]! - pre.x;
                 const dy = sheet.positions[2 * i + 1]! - pre.y;
                 const w = Math.exp(-(dx * dx + dy * dy) / s2);
@@ -231,7 +257,7 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
                 const { t, angle } = foldTaking(drag.origin, pre);
                 const fold = creaseFold(t, angle);
                 const p = scratch;
-                for (let i = 0; i < grid.V; i++) {
+                for (let i = 0; i < topo.V; i++) {
                     set2(p, snap[2 * i]!, snap[2 * i + 1]!);
                     fold.evalDisk(p, 0, p);
                     const r = Math.hypot(p.x, p.y);
@@ -257,14 +283,14 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
         if (!grabbing && settleFrames <= 0) return;
         const pins = grabbing ? (drag as Extract<Drag, { kind: "grab" }>).weights : null;
         if (brush.smoothing > 0) {
-            smoothDisplacements(grid, hood, sheet.positions, smoothScratch, {
+            smoothDisplacements(restSheet, hood, sheet.positions, smoothScratch, {
                 iterations: 2,
                 lambda: 0.5 * brush.smoothing,
                 pinWeights: pins,
             });
         }
         if (brush.springback > 0) {
-            relaxSprings(grid, springs, sheet.positions, {
+            relaxSprings(restSheet, springs, sheet.positions, {
                 iterations: 2,
                 stiffness: 0.35 * brush.springback,
                 mode: "compress-only",
@@ -287,7 +313,7 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
                 // no-op click: don't spend an undo slot if nothing moved
                 const snap = undoStack[undoStack.length - 1]!;
                 let moved = false;
-                for (let i = 0; i < 2 * grid.V; i++) {
+                for (let i = 0; i < 2 * topo.V; i++) {
                     if (Math.abs(sheet.positions[i]! - snap[i]!) > 1e-9) {
                         moved = true;
                         break;

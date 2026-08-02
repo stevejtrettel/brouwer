@@ -37,14 +37,38 @@ export const theme = {
     torusShell: { color: 0xa8c6d8, opacity: 0.14 },
     meridian: { color: 0x6b7a99, opacity: 0.22 },
 
+    /** domain sphere S² (Borsuk–Ulam, Poincaré) */
+    sphere: {
+        color: 0xa8c6d8,
+        opacity: 0.16,
+        graticule: 0x6b7a99,
+        graticuleOpacity: 0.3,
+    },
+
+    /** moving-frame gizmo arrows; the field vector itself uses its role color */
+    frame: { e1: 0x6b7a99, e2: 0x9a9484 },
+
     slice: {
         disk: 0xffffff,
         rim: 0x33313b,
         segment: 0x9a9484,
     },
 
+    /** the swept segment surface between Γ_f and Γ_f̄ (Borsuk) */
+    ribbon: { color: 0x8d7ae0, opacity: 0.72, bandTint: 0.82 },
+
     /** multiplies the texture on orientation-reversed (folded-over) regions */
     foldTint: 0xd98d7e,
+
+    /** figure mode (path tracing) — the paper look */
+    paper: {
+        /** the shell becomes real glass under the path tracer */
+        glass: { color: 0xcfe8ee, roughness: 0.06, ior: 1.2 },
+        ground: 0xffffff,
+        /** gradient environment: bright top, warm paper below */
+        environmentTop: 0xffffff,
+        environmentBottom: 0xd8d2c6,
+    },
 } as const;
 
 export function roleColor(role: CurveRole): number {

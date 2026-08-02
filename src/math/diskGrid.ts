@@ -79,6 +79,23 @@ export function createDiskGrid(rings = 40, sectors = 80): DiskGrid {
     return { V, T, domain, indices, rings, sectors };
 }
 
+// ------------------------------------------------------ sheet structure
+// The sculpting helpers below never need the full DiskGrid — only these
+// structural slices — so any triangulated sheet with 2D positions (e.g. the
+// flattened sphere image in sphereGrid.ts) can reuse them.
+
+/** Any triangulated sheet: vertex count + triangle soup. */
+export interface SheetTopology {
+    readonly V: number;
+    readonly T: number;
+    readonly indices: Uint32Array;
+}
+
+/** A sheet plus its 2-interleaved rest positions (the relaxed shape). */
+export interface SheetGeometry extends SheetTopology {
+    readonly domain: Float32Array;
+}
+
 // ---------------------------------------------------------------- springs
 
 export interface SpringEdges {
@@ -89,14 +106,14 @@ export interface SpringEdges {
 }
 
 /** The unique edges of the triangulation, with domain rest lengths. */
-export function buildSpringEdges(grid: DiskGrid): SpringEdges {
+export function buildSpringEdges(sheet: SheetGeometry): SpringEdges {
     const seen = new Set<number>();
     const pairsList: number[] = [];
-    for (let t = 0; t < grid.T; t++) {
+    for (let t = 0; t < sheet.T; t++) {
         for (let e = 0; e < 3; e++) {
-            const a = grid.indices[3 * t + e]!;
-            const b = grid.indices[3 * t + ((e + 1) % 3)]!;
-            const key = Math.min(a, b) * grid.V + Math.max(a, b);
+            const a = sheet.indices[3 * t + e]!;
+            const b = sheet.indices[3 * t + ((e + 1) % 3)]!;
+            const key = Math.min(a, b) * sheet.V + Math.max(a, b);
             if (seen.has(key)) continue;
             seen.add(key);
             pairsList.push(a, b);
@@ -108,8 +125,8 @@ export function buildSpringEdges(grid: DiskGrid): SpringEdges {
         const a = pairs[2 * e]!;
         const b = pairs[2 * e + 1]!;
         rest[e] = Math.hypot(
-            grid.domain[2 * a]! - grid.domain[2 * b]!,
-            grid.domain[2 * a + 1]! - grid.domain[2 * b + 1]!,
+            sheet.domain[2 * a]! - sheet.domain[2 * b]!,
+            sheet.domain[2 * a + 1]! - sheet.domain[2 * b + 1]!,
         );
     }
     return { pairs, rest };
@@ -124,7 +141,7 @@ export function buildSpringEdges(grid: DiskGrid): SpringEdges {
  * kept inside D².
  */
 export function relaxSprings(
-    grid: DiskGrid,
+    sheet: { V: number },
     edges: SpringEdges,
     positions: Float32Array,
     options: {
@@ -146,8 +163,8 @@ export function relaxSprings(
     // stable for stiffness ≤ 1, where sequential in-place updates overshoot
     // and tangle the mesh on strongly compressed configurations
     let scratch = springScratch.get(edges);
-    if (!scratch || scratch.acc.length !== 2 * grid.V) {
-        scratch = { acc: new Float32Array(2 * grid.V), count: new Float32Array(grid.V) };
+    if (!scratch || scratch.acc.length !== 2 * sheet.V) {
+        scratch = { acc: new Float32Array(2 * sheet.V), count: new Float32Array(sheet.V) };
         springScratch.set(edges, scratch);
     }
     const { acc, count } = scratch;
@@ -174,7 +191,7 @@ export function relaxSprings(
             count[a] = count[a]! + 1;
             count[b] = count[b]! + 1;
         }
-        for (let i = 0; i < grid.V; i++) {
+        for (let i = 0; i < sheet.V; i++) {
             const n = count[i]!;
             if (n === 0) continue;
             const free = pins ? 1 - pins[i]! : 1;
@@ -183,7 +200,7 @@ export function relaxSprings(
         }
     }
     // stay inside the disk
-    for (let i = 0; i < grid.V; i++) {
+    for (let i = 0; i < sheet.V; i++) {
         const r = Math.hypot(positions[2 * i]!, positions[2 * i + 1]!);
         if (r > 1) {
             positions[2 * i] = positions[2 * i]! / r;
@@ -203,32 +220,49 @@ export interface Neighborhoods {
     readonly list: Uint32Array;
 }
 
+/** Adjacency lists from the triangle soup (shared by disk and sphere). */
+function adjacencyLists(topo: SheetTopology): number[][] {
+    const lists: number[][] = Array.from({ length: topo.V }, () => []);
+    for (let t = 0; t < topo.T; t++) {
+        for (let e = 0; e < 3; e++) {
+            const a = topo.indices[3 * t + e]!;
+            const b = topo.indices[3 * t + ((e + 1) % 3)]!;
+            if (!lists[a]!.includes(b)) lists[a]!.push(b);
+            if (!lists[b]!.includes(a)) lists[b]!.push(a);
+        }
+    }
+    return lists;
+}
+
+function toCSR(lists: number[][]): Neighborhoods {
+    const V = lists.length;
+    const start = new Uint32Array(V + 1);
+    for (let i = 0; i < V; i++) start[i + 1] = start[i]! + lists[i]!.length;
+    const list = new Uint32Array(start[V]!);
+    for (let i = 0, k = 0; i < V; i++) for (const n of lists[i]!) list[k++] = n;
+    return { start, list };
+}
+
+/** Plain vertex adjacency of any triangulated sheet (no boundary special-
+ *  casing — closed surfaces like the sphere grid use this directly). */
+export function buildAdjacency(topo: SheetTopology): Neighborhoods {
+    return toCSR(adjacencyLists(topo));
+}
+
 /**
  * Vertex neighborhoods for smoothing. Rim vertices deliberately keep ONLY
  * their two rim neighbors: the boundary is smoothed as a curve along
  * itself, so averaging never drags the sheet's edge inward.
  */
 export function buildNeighborhoods(grid: DiskGrid): Neighborhoods {
-    const { V, rings, sectors } = grid;
+    const { rings, sectors } = grid;
     const rimStart = 1 + (rings - 1) * sectors;
-    const lists: number[][] = Array.from({ length: V }, () => []);
-    for (let t = 0; t < grid.T; t++) {
-        for (let e = 0; e < 3; e++) {
-            const a = grid.indices[3 * t + e]!;
-            const b = grid.indices[3 * t + ((e + 1) % 3)]!;
-            if (!lists[a]!.includes(b)) lists[a]!.push(b);
-            if (!lists[b]!.includes(a)) lists[b]!.push(a);
-        }
-    }
+    const lists = adjacencyLists(grid);
     for (let j = 0; j < sectors; j++) {
         const v = rimStart + j;
         lists[v] = [rimStart + ((j + 1) % sectors), rimStart + ((j + sectors - 1) % sectors)];
     }
-    const start = new Uint32Array(V + 1);
-    for (let i = 0; i < V; i++) start[i + 1] = start[i]! + lists[i]!.length;
-    const list = new Uint32Array(start[V]!);
-    for (let i = 0, k = 0; i < V; i++) for (const n of lists[i]!) list[k++] = n;
-    return { start, list };
+    return toCSR(lists);
 }
 
 /**
@@ -241,7 +275,7 @@ export function buildNeighborhoods(grid: DiskGrid): Neighborhoods {
  * length 2V (caller-owned to keep this allocation-free).
  */
 export function smoothDisplacements(
-    grid: DiskGrid,
+    sheet: { V: number; domain: Float32Array },
     hood: Neighborhoods,
     positions: Float32Array,
     scratch: Float32Array,
@@ -250,7 +284,7 @@ export function smoothDisplacements(
     const lambda = options.lambda ?? 0.4;
     const iterations = options.iterations ?? 2;
     const pins = options.pinWeights ?? null;
-    const { V, domain } = grid;
+    const { V, domain } = sheet;
 
     for (let iter = 0; iter < iterations; iter++) {
         for (let i = 0; i < V; i++) {

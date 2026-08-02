@@ -117,6 +117,28 @@ export class ViewManager {
         return true;
     }
 
+    /** Map a pointer position (CSS pixels, top-left origin) to NDC within a
+     *  viewport's rect ([-1, 1]², y up). Returns false when the pointer is
+     *  outside the rect. Works for any camera — pair with a Raycaster for
+     *  perspective picking (SphereBrush). */
+    pointerToNDC(
+        vp: Viewport,
+        cssX: number,
+        cssY: number,
+        cssWidth: number,
+        cssHeight: number,
+        out: { x: number; y: number },
+    ): boolean {
+        const fx = cssX / cssWidth;
+        const fy = 1 - cssY / cssHeight;
+        const lx = (fx - vp.rect.x) / vp.rect.w;
+        const ly = (fy - vp.rect.y) / vp.rect.h;
+        if (lx < 0 || lx > 1 || ly < 0 || ly > 1) return false;
+        out.x = 2 * lx - 1;
+        out.y = 2 * ly - 1;
+        return true;
+    }
+
     /** Which viewport contains a pointer position (CSS pixels, top-left origin)? */
     viewportAt(cssX: number, cssY: number, cssWidth: number, cssHeight: number): Viewport | null {
         const fx = cssX / cssWidth;

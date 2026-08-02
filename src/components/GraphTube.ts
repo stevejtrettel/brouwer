@@ -198,6 +198,22 @@ function buildTubeTopology(N: number, sides: number): BufferGeometry {
     geometry.setAttribute("position", new BufferAttribute(new Float32Array(3 * vertexCount), 3));
     geometry.setAttribute("normal", new BufferAttribute(new Float32Array(3 * vertexCount), 3));
 
+    // natural (θ, cross-section) uv — the path tracer's scene generator
+    // computes tangents from uv, and a missing buffer degenerates to NaN
+    // tangents that render the mesh black
+    const uv = new Float32Array(2 * vertexCount);
+    for (let i = 0; i < N; i++) {
+        for (let j = 0; j < sides; j++) {
+            const k = 2 * (i * sides + j);
+            uv[k] = i / N;
+            uv[k + 1] = j / sides;
+        }
+    }
+    geometry.setAttribute("uv", new BufferAttribute(uv, 2));
+
+    // winding chosen so the geometric (face) normal agrees with the outward
+    // vertex normals — the path tracer shades by face orientation, and a
+    // mismatched winding renders as black backfaces
     const index = new Uint32Array(6 * N * sides);
     let k = 0;
     for (let i = 0; i < N; i++) {
@@ -209,11 +225,11 @@ function buildTubeTopology(N: number, sides: number): BufferGeometry {
             const c = i1 * sides + j1;
             const d = i * sides + j1;
             index[k++] = a;
+            index[k++] = c;
             index[k++] = b;
-            index[k++] = c;
             index[k++] = a;
-            index[k++] = c;
             index[k++] = d;
+            index[k++] = c;
         }
     }
     geometry.setIndex(new BufferAttribute(index, 1));

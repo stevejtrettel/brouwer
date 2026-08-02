@@ -33,6 +33,7 @@ export class TorusShell extends Mesh {
         });
         super(geometry, material);
         this.renderOrder = 10; // after everything opaque inside
+        this.userData.figureGlass = true; // figure mode swaps this to real glass
 
         this.torus = torus;
         this.params
@@ -85,6 +86,19 @@ function buildShellTopology(): BufferGeometry {
     const count = THETA_SEGMENTS * TUBE_SEGMENTS;
     geometry.setAttribute("position", new BufferAttribute(new Float32Array(3 * count), 3));
     geometry.setAttribute("normal", new BufferAttribute(new Float32Array(3 * count), 3));
+
+    // real uv so the path tracer's tangent generation stays finite (see GraphTube)
+    const uv = new Float32Array(2 * count);
+    for (let i = 0; i < THETA_SEGMENTS; i++) {
+        for (let j = 0; j < TUBE_SEGMENTS; j++) {
+            const k = 2 * (i * TUBE_SEGMENTS + j);
+            uv[k] = i / THETA_SEGMENTS;
+            uv[k + 1] = j / TUBE_SEGMENTS;
+        }
+    }
+    geometry.setAttribute("uv", new BufferAttribute(uv, 2));
+    // this winding already agrees with the outward normals (unlike
+    // GraphTube's grid, whose cross-section runs the other way)
     const index = new Uint32Array(6 * count);
     let k = 0;
     for (let i = 0; i < THETA_SEGMENTS; i++) {

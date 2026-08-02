@@ -53,7 +53,11 @@ export interface TorusViewOptions {
 export interface TorusView {
     readonly scene: Scene;
     readonly viewport: Viewport;
+    readonly camera: PerspectiveCamera;
+    readonly controls: OrbitControls;
     readonly tubes: GraphTube[];
+    /** the fiber disk, or null when `meridian: false` */
+    readonly meridian: MeridianDisk | null;
     /** gold pulsing collision markers */
     readonly markers: Marker[];
     /** steady landmark dots (empty unless `landmarks` was requested) */
@@ -119,7 +123,10 @@ export function createTorusView(options: TorusViewOptions): TorusView {
     return {
         scene,
         viewport,
+        camera,
+        controls,
         tubes,
+        meridian,
         markers,
         landmarks,
         refit() {

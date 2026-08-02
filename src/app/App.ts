@@ -61,6 +61,11 @@ export class App {
         });
     }
 
+    /** Halt the raster loop (figure mode takes over the canvas). */
+    stop(): void {
+        this.renderer.setAnimationLoop(null);
+    }
+
     private onResize(): void {
         const w = window.innerWidth;
         const h = window.innerHeight;

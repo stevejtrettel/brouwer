@@ -275,6 +275,73 @@ export function refineZero(
     return { converged: norm <= tol, s, theta, residual: norm, iterations };
 }
 
+/**
+ * Stage-2 fallback for C⁰ kinks: derivative-free compass search on |d|.
+ * Piecewise-linear maps (sculpted sheets, combed fields) are continuous but
+ * not differentiable at creases, where refineZero's central differences
+ * straddle the kink, the Jacobian lies, and Newton stalls at a small-but-
+ * not-tiny residual. Pattern search needs only continuity: probe the four
+ * axis moves (±Δs, ±Δθ), take any improvement, halve the steps otherwise —
+ * ~1 bit of accuracy per round on a transversal zero. Slower than Newton
+ * (linear, not quadratic) but unconditionally robust; used only after
+ * Newton has been given its chance.
+ */
+export function refineZeroPattern(
+    d: DifferenceField,
+    seed: { s: number; theta: number },
+    options: {
+        sClamp?: [number, number];
+        /** starting probe steps (defaults: 1e-2 in s, 2π/256 in θ) */
+        initialStep?: { s: number; theta: number };
+        tol?: number;
+        maxRounds?: number;
+    } = {},
+): CollisionResult {
+    const tol = options.tol ?? 1e-7;
+    const maxRounds = options.maxRounds ?? 60;
+    const [sLo, sHi] = options.sClamp ?? [-Infinity, Infinity];
+    const clampS = (s: number) => Math.min(sHi, Math.max(sLo, s));
+
+    const F = scratch;
+    let s = clampS(seed.s);
+    let theta = seed.theta;
+    let hs = options.initialStep?.s ?? 1e-2;
+    let ht = options.initialStep?.theta ?? (2 * Math.PI) / 256;
+
+    d(s, theta, F);
+    let norm = Math.hypot(F.x, F.y);
+
+    let rounds = 0;
+    while (norm > tol && rounds < maxRounds && (hs > 1e-12 || ht > 1e-12)) {
+        rounds++;
+        let improved = false;
+        for (const [ds, dtheta] of [
+            [hs, 0],
+            [-hs, 0],
+            [0, ht],
+            [0, -ht],
+        ] as const) {
+            const sNew = clampS(s + ds);
+            const thetaNew = theta + dtheta;
+            d(sNew, thetaNew, F);
+            const normNew = Math.hypot(F.x, F.y);
+            if (normNew < norm) {
+                s = sNew;
+                theta = thetaNew;
+                norm = normNew;
+                improved = true;
+            }
+        }
+        if (!improved) {
+            hs /= 2;
+            ht /= 2;
+        }
+    }
+
+    theta = ((theta % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    return { converged: norm <= tol, s, theta, residual: norm, iterations: rounds };
+}
+
 // ------------------------------------------------------------ orchestrator
 
 export interface FindCollisionOptions extends TransitionOptions, RefineOptions {}

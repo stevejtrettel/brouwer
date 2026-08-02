@@ -16,13 +16,15 @@ export interface TangentVectorField {
     evalTangent(x: Vec3, time: number, out: Vec3): Vec3;
 }
 
-/** Smoothly clamp |v| ≤ 1 in place (same profile as the disk clamp). */
-function clampLength(v: Vec3): Vec3 {
+/** Smoothly clamp |v| ≤ 1 in place (same profile as the disk clamp).
+ *  Exported so PL fields (sphereGrid.ts) keep the identical profile. */
+export function softClampLength(v: Vec3): Vec3 {
     const r = length3(v);
     if (r === 0) return v;
     const s = 1 / Math.pow(1 + Math.pow(r, 8), 1 / 8);
     return set3(v, v.x * s, v.y * s, v.z * s);
 }
+const clampLength = softClampLength;
 
 /**
  * Projected constant field v(x) = a − ⟨a, x⟩x: the canonical hairy-ball
