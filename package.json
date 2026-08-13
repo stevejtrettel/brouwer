@@ -4,10 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
+    "build:all": "node scripts/build-all.mjs",
+    "dev": "node scripts/run-demo.mjs dev",
+    "build": "node scripts/run-demo.mjs build",
+    "preview": "node scripts/run-demo.mjs preview",
     "test": "vitest run",
+    "test:ui": "vitest run --config vitest.ui.config.ts",
+    "figures": "node scripts/render-figures.mjs",
+    "figures:sheet": "node scripts/contact-sheet.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
