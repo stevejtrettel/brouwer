@@ -2,6 +2,7 @@
 import { getCollection, render } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import { withBase } from '../../lib/paths.ts';
 
 export async function getStaticPaths() {
   const theorems = await getCollection('theorems', ({ data }) => !data.draft);
@@ -30,7 +31,7 @@ const { Content } = await render(entry);
 
     <aside class="play-banner">
       <span>Try the interactive version — sculpt the map and watch the proof happen.</span>
-      <a class="button" href={`/${entry.id}/play/`}>Play &rarr;</a>
+      <a class="button" href={withBase(`/${entry.id}/play/`)}>Play &rarr;</a>
     </aside>
   </main>
 </Base>

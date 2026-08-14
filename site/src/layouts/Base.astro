@@ -1,6 +1,7 @@
 ---
 import 'katex/dist/katex.min.css';
 import '../styles/global.css';
+import { withBase } from '../lib/paths';
 
 interface Props {
   title: string;
@@ -33,7 +34,7 @@ const {
       !bare && header && (
         <header class="site-header">
           <div class="inner">
-            <a class="wordmark" href="/">
+            <a class="wordmark" href={withBase('/')}>
               <svg width="26" height="18" viewBox="0 0 26 18" fill="none" aria-hidden="true">
                 <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="2.2" />
                 <circle cx="17" cy="9" r="7" stroke="currentColor" stroke-width="2.2" />
@@ -43,9 +44,9 @@ const {
               Linking Proofs of Brouwer, Borsuk–Ulam, and Poincaré
             </a>
             <nav>
-              <a href="/brouwer/">Brouwer</a>
-              <a href="/borsuk-ulam/">Borsuk–Ulam</a>
-              <a href="/poincare/">Poincaré</a>
+              <a href={withBase('/brouwer/')}>Brouwer</a>
+              <a href={withBase('/borsuk-ulam/')}>Borsuk–Ulam</a>
+              <a href={withBase('/poincare/')}>Poincaré</a>
             </nav>
           </div>
         </header>

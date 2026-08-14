@@ -2,7 +2,7 @@
 import { getCollection } from 'astro:content';
 import type { CollectionEntry } from 'astro:content';
 import Base from '../../layouts/Base.astro';
-import { demoUrl } from '../../lib/paths.ts';
+import { demoUrl, withBase } from '../../lib/paths.ts';
 
 export async function getStaticPaths() {
   const theorems = await getCollection('theorems', ({ data }) => !data.draft);
@@ -26,7 +26,7 @@ const demoSrc = demoUrl(entry.data.demo);
 <Base title={`Play — ${entry.data.shortTitle}`} bare>
   <div class="play-page">
     <div class="play-bar">
-      <a href={`/${entry.id}/`}>&larr; {entry.data.shortTitle}</a>
+      <a href={withBase(`/${entry.id}/`)}>&larr; {entry.data.shortTitle}</a>
       <span class="title">{entry.data.title}</span>
     </div>
     <iframe class="demo-frame" src={demoSrc} title={`${entry.data.title} — interactive demo`}
