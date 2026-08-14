@@ -39,11 +39,13 @@ import type { SheetSculptor } from "../../src/components/SheetSculptor.ts";
 import { SliceDisk } from "../../src/components/SliceDisk.ts";
 import { SpherePushforward } from "../../src/components/SpherePushforward.ts";
 import { makeSphereTexture } from "../../src/components/diskTexture.ts";
+import { PushedGraticule } from "../../src/components/PushedGraticule.ts";
 import { DiskCurve2D } from "../../src/components/panel2d.ts";
 import { SlicePlate } from "../../src/components/SlicePlate.ts";
 import { createTorusView } from "../../src/views/TorusView.ts";
 import type { TorusView } from "../../src/views/TorusView.ts";
 import { createSphereView } from "../../src/views/SphereView.ts";
+import { LatitudeRing } from "../../src/components/LatitudeRing.ts";
 import type { SphereView } from "../../src/views/SphereView.ts";
 
 const N = 512;
@@ -66,6 +68,49 @@ export interface BorsukScene {
     readonly state: { phi: number; theta: number };
     readonly torusView: TorusView;
     readonly sphere: SphereView;
+    /** the ANTIPODAL latitude −S_φ, drawn on the domain sphere in the violet
+     *  that f̄ wears everywhere else.
+     *
+     *  Without it the setup figure shows one circle and two image loops, and
+     *  the reader has no way to see where the violet loop came from. With it
+     *  the correspondence is carried by colour straight through all three
+     *  panels: blue circle → blue image loop → blue graph, violet → violet →
+     *  violet. Hidden by default; the setup figure turns it on. */
+    readonly antipodalLatitude: LatitudeRing;
+    /** Show the gold antipodal-pair markers, or not.
+     *
+     *  Gold is the FORCED EVENT in this set — the fixed point, the antipodal
+     *  coincidence, the core crossing. A setup figure has forced nothing yet,
+     *  so the markers are both premature there and spend the colour early.
+     *  They are wanted in the pole/pinch/equator figures, where the pair is
+     *  the subject, which is why this is a switch and not a deletion.
+     *
+     *  It has to be a scene flag rather than a call in a figure's apply():
+     *  refresh() re-derives the markers from the collision census every frame,
+     *  so a one-shot hide is overwritten immediately. */
+    setPairMarkers(on: boolean): void;
+    /** Pin a gold marker at the antipodal solution found by findPair(), and
+     *  keep it there.
+     *
+     *  The pinch panel's whole subject is the moment f(x) = f(−x), and at that
+     *  φ the two curves lie almost on top of each other for a long stretch —
+     *  so the reader cannot see WHERE they actually touch. The collision census
+     *  that normally drives the markers only fires within EPSILON and moves
+     *  around as φ does; this pins the solved point, which is the one the
+     *  figure is about. Cleared by passing null. */
+    setPinchMarker(pin: { theta: number; x: number; y: number } | null): void;
+    /** Stage the codomain panel as a FIGURE rather than as a demo.
+     *
+     *  On: the textured balloon hides and the pushed grid carries the image —
+     *  which is what the paper wants, and what the path tracer can actually
+     *  draw (it has no line primitive, and a smeared texture says nothing about
+     *  where the sphere stretched or folded).
+     *
+     *  Off, which is the default and what the WEB demos get: the balloon keeps
+     *  its texture. Colour is the right correspondence device when the reader
+     *  can drag the map around and watch the image move; the grid is the right
+     *  one for a still. Neither replaces the other, so this is a switch. */
+    setCrushFigure(on: boolean): void;
     readonly ribbon: RibbonStrip;
     /** the flattened-balloon panel (story mode): the codomain, and where the
      *  map is sculpted. Scaffolding, never a figure — the figure page parks it
@@ -236,17 +281,24 @@ export function buildBorsukScene(
     }
 
     // ------------------------------------------------------ domain sphere
+    const antipodalLatitude = new LatitudeRing({ color: roleColor("antipodal-map") });
+    antipodalLatitude.visible = false;
+
     const sphere = createSphereView({
         app,
         rect: mode === "render" ? { x: 2 / 3, y: 0, w: 1 / 3, h: 1 } : { x: 0, y: 0.5, w: 1 / 3, h: 0.5 },
         markers: 8,
         dots: 4, // 2 for the always-on antipodal pair + 2 for the lab's θ probe
     });
+    sphere.scene.add(antipodalLatitude);
 
     // ------------------------------------------------- image panel (story)
     let slice: SliceDisk | null = null;
     let sliceViewport: Viewport | null = null;
     let imageFigure: BorsukScene["imageFigure"] = null;
+    let pushedGrid: PushedGraticule | null = null;
+    let pairMarkers = true;
+    let pinchMarker: { theta: number; x: number; y: number } | null = null;
     let balloon: SpherePushforward | null = null;
     let sculptor: SheetSculptor | null = null;
     let fImageCurve: DiskCurve2D | null = null;
@@ -262,6 +314,14 @@ export function buildBorsukScene(
         balloon.position.z = 0.0005;
         sliceScene.add(balloon);
         balloon.setPositions(f.positions);
+
+        // The domain's grid, carried through f. This is what makes (b) read as
+        // "the sphere crushed": the same cells the reader just saw on the
+        // sphere, now stretched, bunched and folded. The balloon stays behind
+        // it as a faint tint so the image still has a body.
+        pushedGrid = new PushedGraticule({ map: f });
+        pushedGrid.visible = false; // demo look by default; figures opt in
+        sliceScene.add(pushedGrid);
         fImageCurve = new DiskCurve2D(fCurve, roleColor("map"), 0.014);
         fbarImageCurve = new DiskCurve2D(fbarCurve, roleColor("antipodal-map"), 0.014);
         fImageCurve.position.z = 0.0025;
@@ -308,6 +368,7 @@ export function buildBorsukScene(
                 sheet: f,
                 onEdit: () => {
                     balloon!.setPositions(f.positions);
+                    pushedGrid?.refit();
                     refresh();
                 },
                 onCommit: () => {
@@ -327,6 +388,18 @@ export function buildBorsukScene(
     };
     const markerScratch: Vec3[] = [];
 
+    /** Everything downstream of the map's vertex positions.
+     *
+     *  The balloon caches its positions and the pushed grid caches its tubes,
+     *  so a wholesale change to f — a loaded crumple, a reset, a preset rebake
+     *  — has to poke both. Only the brush was doing it, which meant a loaded
+     *  map reached the grid but not the balloon, and panel (b) drew two
+     *  different maps at once. */
+    function refitMapVisuals(): void {
+        balloon?.setPositions(f.positions);
+        pushedGrid?.refit();
+    }
+
     function refresh(): void {
         refillGraphCurve(fCurve, latitudeGraphLoop(f, state.phi).loop);
         refillGraphCurve(fbarCurve, antipodalGraphLoop(f, state.phi).loop);
@@ -336,13 +409,17 @@ export function buildBorsukScene(
         fbarImageCurve?.refit(fbarCurve);
         updateSegmentRow();
         sphere.setPhi(state.phi);
+        // −S_φ is the latitude at π − φ: the antipode of every point of S_φ
+        antipodalLatitude.setPhi(Math.PI - state.phi);
 
         const events = detectCollisions(fCurve, fbarCurve, EPSILON);
-        torusView.placeMarkers(events);
+        // the pinned solution wins over the census: it is the point the figure
+        // is making a claim about, and it must not blink out as φ is nudged
+        torusView.placeMarkers(pinchMarker ? [pinchMarker, ...events] : events);
 
         // each collision is a PAIR on the sphere: x(φ, θ) and −x
         markerScratch.length = 0;
-        for (const e of events.slice(0, 4)) {
+        for (const e of pairMarkers ? events.slice(0, 4) : []) {
             markerScratch.push(
                 spherePoint(state.phi, e.theta, vec3()),
                 spherePoint(Math.PI - state.phi, e.theta + Math.PI, vec3()),
@@ -487,6 +564,19 @@ export function buildBorsukScene(
         torusView,
         sphere,
         ribbon,
+        antipodalLatitude,
+        setPairMarkers(on) {
+            pairMarkers = on;
+            refresh();
+        },
+        setPinchMarker(pin) {
+            pinchMarker = pin;
+            refresh();
+        },
+        setCrushFigure(on) {
+            if (pushedGrid) pushedGrid.visible = on;
+            if (balloon) balloon.visible = !on;
+        },
         imagePanel: sliceViewport,
         imageFigure,
         sculptor,
@@ -500,7 +590,10 @@ export function buildBorsukScene(
             state.theta = theta;
             updateSlice();
         },
-        refresh,
+        refresh() {
+            refitMapVisuals();
+            refresh();
+        },
         updateSlice,
         sweepToggle() {
             if (sweep.playing) {

@@ -164,7 +164,7 @@ export const PAPER = [
         section: "§3 Borsuk–Ulam",
         title: "Slicing and graphing on the sphere",
         caption:
-            "The same three beats as Figure 1, one dimension up. On the left the domain: a glass sphere with one latitude circle drawn on it, and the antipodal pair that circle will be tested against. In the middle, the sphere crushed flat into the disk — that is what f does — with the image of the latitude riding on it in blue, and the image of its antipodal partner in violet. On the right, those two loops read off as curves in the solid torus, exactly the way Figure 1 read a circle's image off as a graph. Everything in §3 happens to that pair of curves.",
+            "Blue is f and violet is f̄ throughout §3, the way coral was the identity and blue was f in §2 — the colour names the object, not its place in the picture. The same three beats as Figure 1, one dimension up. On the left the domain: a glass sphere with the latitude circle S_φ in blue and its antipodal partner −S_φ in violet. In the middle, the sphere crushed flat into the disk — that is what f does — with the image of the latitude riding on it in blue, and the image of its antipodal partner in violet. On the right, those two loops read off as curves in the solid torus, exactly the way Figure 1 read a circle's image off as a graph. Everything in §3 happens to that pair of curves.",
         panels: [
             {
                 file: "borsuk-setup-sphere",
@@ -194,15 +194,14 @@ export const PAPER = [
         number: 6,
         section: "§3 Borsuk–Ulam",
         title: "From the pole to the equator",
+        // Three tori, one camera, only φ changing — the same shape as Figure 3,
+        // and deliberately so: flat annulus → the curves touch → an odd twist.
+        // The spanning surface is drawn throughout, because the surface is what
+        // carries the twist; showing it only at the ends would make the middle
+        // panel a different picture.
         caption:
             "First the sphere, with one circle of latitude drawn on it and two gold dots marking a pair of opposite points. Then three doughnuts, the same camera each time, each with a band stretched between the two curves. Near the pole the band is flat like a washer and its two edges are separate rings. At the equator the band has turned over on itself — it is light on one face and dark on the other, so you can see where it flips — and the edges can no longer be separated. In between, the band pinches to nothing at a single gold point, and that pinch is a pair of opposite points on the sphere where the function gives the same answer. The paper draws only the equator one.",
         panels: [
-            {
-                file: "borsuk-domain",
-                page: "borsuk-render",
-                preset: "sphere-domain",
-                caption: "The domain S² sliced into latitudes, with an antipodal pair marked.",
-            },
             {
                 file: "borsuk-polar-ribbon",
                 page: "borsuk-render",
@@ -238,20 +237,35 @@ export const PAPER = [
                 size: "1900x620",
                 caption: "ℓ_θ at θ = 0, π/4, π/2, 3π/4, π: a half-turn, laid out to be counted.",
             },
-            {
-                file: "borsuk-paper-strip",
-                planned: true,
-                size: "1680x760",
-                caption:
-                    "The strip of paper: no twist, and the two edge loops lift apart; one full twist, and they don't. The inference §3 rests on, with the torus and the map taken away.",
-                note: "Not built. Needs a small standalone scene — an annular band with n full twists and its two boundary curves, outside the solid torus.",
-            },
         ],
     },
 
-    // ------------------------------------------------------------------ §4
     {
         number: 8,
+        section: "§3 Borsuk–Ulam",
+        title: "A strip with an odd number of twists",
+        caption:
+            "The fact about paper that §3 rests on, drawn as paper. A strip closed into a ring, with a string taped along each edge. Untwisted, the two strings lift apart. Put in one full twist and they cannot be separated however you pull. The Borsuk argument shows the strip swept between the two graphs closes up with an odd number of twists; this is the picture of why that settles it. Nothing here is a sphere, a map or a torus — it is the one figure in the set with no mathematics in it beyond the twisting, which is the point.",
+        panels: [
+            {
+                file: "borsuk-strip-untwisted",
+                page: "strip-render",
+                preset: "strip-untwisted",
+                size: "1400x900",
+                caption: "(a) no twist: the two edge curves come apart.",
+            },
+            {
+                file: "borsuk-strip-twisted",
+                page: "strip-render",
+                preset: "strip-twisted",
+                size: "1400x900",
+                caption: "(b) one full twist: the two edge curves are linked.",
+            },
+        ],
+    },
+    // ------------------------------------------------------------------ §4
+    {
+        number: 9,
         section: "§4 Poincaré",
         title: "How f_γ is built",
         caption:
@@ -267,7 +281,7 @@ export const PAPER = [
         ],
     },
     {
-        number: 9,
+        number: 10,
         section: "§4 Poincaré",
         title: "The loop, and its reverse",
         caption:
@@ -288,7 +302,7 @@ export const PAPER = [
         ],
     },
     {
-        number: 10,
+        number: 11,
         section: "§4 Poincaré",
         title: "The graph must cross the core",
         caption:

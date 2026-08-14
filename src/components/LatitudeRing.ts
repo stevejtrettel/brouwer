@@ -47,6 +47,12 @@ export class LatitudeRing extends Mesh {
         this.position.copy(worldAxis).multiplyScalar(Math.cos(alpha));
     }
 
+    /** repaint — §3 wants S_φ in the colour of the map it produces, not in the
+     *  coral that means "the identity" everywhere else */
+    setColor(color: number): void {
+        (this.material as ReturnType<typeof candyMaterial>).color.set(color);
+    }
+
     dispose(): void {
         this.geometry.dispose();
         (this.material as ReturnType<typeof candyMaterial>).dispose();

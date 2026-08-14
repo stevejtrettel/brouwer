@@ -257,8 +257,13 @@ export function attachWorkbench(options: WorkbenchOptions): void {
             h: bh / H,
         });
 
-        // every other figure view parks off-canvas: one preview at a time
-        for (const config of configs) {
+        // Every other figure view parks off-canvas: one preview at a time.
+        //
+        // This walks the PAGE's full config list, not the scoped one. Under
+        // /f/<n>/ the scoped list holds only that figure's panels, so a view
+        // belonging to some other figure on the same page — the domain sphere,
+        // say — would never be parked and would sit on top of the preview.
+        for (const config of options.configs) {
             if (config.view === current.view) continue;
             Object.assign(config.view.viewport.rect, { x: 2, y: 2, w: 0.001, h: 0.001 });
         }
