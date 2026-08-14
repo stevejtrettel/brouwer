@@ -519,7 +519,10 @@ export function buildBorsukScene(
         }
 
         const specs: { p: Vec3; color: number }[] = [];
-        if (pair) {
+        // the SECOND gold path onto the sphere — a cached findPair() result,
+        // separate from the collision census gated above. Both have to respect
+        // the flag or a setup figure keeps its markers.
+        if (pair && pairMarkers) {
             pairAntipode.x = -pair.x.x;
             pairAntipode.y = -pair.x.y;
             pairAntipode.z = -pair.x.z;

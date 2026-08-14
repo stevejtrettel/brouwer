@@ -55,17 +55,28 @@ export const theme = {
     },
 
     /** the swept segment surface between Γ_f and Γ_f̄ (Borsuk) */
+    /**
+     * The swept band. NEUTRAL, deliberately: it used to be violet, which is
+     * f̄'s colour, so within §3 violet meant both the companion curve and the
+     * surface stretched between the two curves. A reader cannot be told that
+     * colour names the object and then shown one colour naming two objects.
+     *
+     * The band is not a third actor — it is the thing swept BETWEEN the two
+     * actors — so it takes no role colour at all. Its edges are the blue and
+     * violet curves; that is what identifies it.
+     */
     ribbon: {
-        color: 0x8d7ae0,
+        color: 0x9a9484,
         opacity: 0.72,
         bandTint: 0.82,
         /** Figure staging: the band's two faces are painted differently, so
          *  every half-twist FLIPS the colour the reader sees. Counting the
          *  half-twists is the whole content of §3, and a one-colour band makes
-         *  it something to take on trust. Light and mid values of the SAME hue —
-         *  a second hue would read as a second object. */
-        faceFront: 0xb3a6f2,
-        faceBack: 0x4c3f9e,
+         *  it something to take on trust. Light and dark values of the SAME
+         *  neutral — a second hue would read as a second object, and any role
+         *  hue would collide with one of the curves. */
+        faceFront: 0xded7c8,
+        faceBack: 0x6f6a5e,
         /** the ℓ_θ drawn across the band as tubes — Figure 4's hatching, and
          *  what ties the surface back to the segments it is swept from */
         rung: 0x33313b,
