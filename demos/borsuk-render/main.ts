@@ -87,6 +87,7 @@ const band = (id: string, label: string, title: string, phi: number | "pair"): F
         applyPose(scene.torusView, TORUS_RIBBON);
         scene.setSegmentRow(false);
         scene.setRibbonFigure(true);
+        scene.setBandAndCore(true);
         scene.setCrushFigure(false);
         // gold belongs here: this sequence is where the pair is forced
         scene.setPairMarkers(true);
@@ -185,6 +186,8 @@ const setupConfigs: FigureConfig[] = [
             scene.setCrushFigure(false);
             applyPose(scene.torusView, TORUS_RIBBON);
             scene.setRibbonFigure(false);
+            // just the two curves: no band, no core — see setBandAndCore
+            scene.setBandAndCore(false);
             scene.setPhi(1.1);
             phiSlider.set(1.1);
         },
@@ -208,6 +211,7 @@ const configs: FigureConfig[] = [
         apply: () => {
             scene.setCrushFigure(false);
             scene.setPairMarkers(true);
+            scene.setBandAndCore(true);
             applyPose(scene.torusView, PLATE_ROW);
             scene.setPhi(Math.PI / 2); // the equator: where the twist is odd
             phiSlider.set(Math.PI / 2);

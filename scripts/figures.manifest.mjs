@@ -39,6 +39,79 @@
  * @property {Panel[]} panels
  */
 
+/**
+ * §4 (Poincaré) is PARKED, not deleted: the scenes and presets are all still
+ * there, but the figures have not been worked yet and shipping them unexamined
+ * would put three unreviewed pictures in the paper. Move an entry back into
+ * PAPER when its section gets the same pass §1–§3 have had.
+ */
+export const PARKED = [
+    {
+        number: 7,
+        section: "§4 Poincaré",
+        title: "How f_γ is built",
+        caption:
+            "Two things side by side. Left, a sphere with a circle drawn on it and, at one point of that circle, three arrows: the direction you are walking, the direction ninety degrees from it, and the wind at that spot. Right, a flat disc with that same wind arrow drawn from its centre. The definition is “lay the tangent plane flat on the disc so your walking direction points right, then see where the wind lands” — one sentence in §4, never drawn, and the biggest single leap in the paper.",
+        panels: [
+            {
+                file: "poincare-frame",
+                page: "poincare-render",
+                preset: "frame",
+                size: "1560x860",
+                caption: "The moving frame at γ(θ), and the fibre disk it lands the vector in.",
+            },
+        ],
+    },
+    {
+        number: 8,
+        section: "§4 Poincaré",
+        title: "The loop, and its reverse",
+        caption:
+            "Two spheres. Left: a sphere covered in small arrows for the wind, with a little red loop near the north pole — the paper's Figure 5, redrawn. Right: that loop being stretched — down past the tropics to the equator, on down to a small loop at the south pole, then up over the north pole and home, now running the other way round. Four sentences in the paper, no picture.",
+        panels: [
+            {
+                file: "poincare-fur",
+                page: "poincare-render",
+                preset: "sphere-fur-loop",
+                caption: "A tangent field on S², and the small loop γ near the north pole.",
+            },
+            {
+                file: "poincare-loop-family",
+                page: "poincare-render",
+                preset: "loop-family",
+                caption: "The deformation γ → γ̄, as a family of loops on the sphere.",
+            },
+        ],
+    },
+    {
+        number: 9,
+        section: "§4 Poincaré",
+        title: "The graph must cross the core",
+        caption:
+            "Three doughnuts. Left: the graph for the small northern loop, a green curve winding once around as it travels round. Right: the graph after the loop has been reversed, winding the opposite way. Middle: somewhere in between the green curve touches the black core, and a point on the core means the wind is zero there. HONEST WARNING: as rendered today the left and right panels look identical — the thing that tells them apart is not visible from this camera. The fix is a row of fibre discs under each, showing the point going round one way and then the other.",
+        panels: [
+            {
+                file: "poincare-bookend-11",
+                page: "poincare-render",
+                preset: "bookend-1-1",
+                caption: "γ, the small north loop: Γ_{f_γ} is the (1,1)-curve.",
+            },
+            {
+                file: "poincare-crossing",
+                page: "poincare-render",
+                preset: "crossing",
+                caption: "Mid-deformation, the graph meets the core: v = 0 there.",
+            },
+            {
+                file: "poincare-bookend-1-neg1",
+                page: "poincare-render",
+                preset: "bookend-1-neg1",
+                caption: "γ̄, the same loop reversed: Γ_{f_γ̄} is the (1,−1)-curve.",
+            },
+        ],
+    },
+];
+
 /** @type {PaperFigure[]} */
 export const PAPER = [
     // ------------------------------------------------------------------ §1
@@ -223,111 +296,9 @@ export const PAPER = [
             },
         ],
     },
-    {
-        number: 7,
-        section: "§3 Borsuk–Ulam",
-        title: "Counting the twist",
-        caption:
-            "Top: five discs in a row, each with a segment drawn across it, at five positions going halfway around. Follow the row and the segment turns a half circle, its two coloured ends swapping. “It rotates by an odd multiple of π” stops being something to believe and becomes something to count. Bottom: the paper's own suggested experiment (p. 9) — a strip of paper with a string loop taped to each edge, once with no twist where the loops fall apart, once with a full twist where they do not. No doughnut, no function, just the one fact the argument leans on.",
-        panels: [
-            {
-                file: "borsuk-segments",
-                page: "borsuk-render",
-                preset: "segments",
-                size: "1900x620",
-                caption: "ℓ_θ at θ = 0, π/4, π/2, 3π/4, π: a half-turn, laid out to be counted.",
-            },
-        ],
-    },
 
-    {
-        number: 8,
-        section: "§3 Borsuk–Ulam",
-        title: "A strip with an odd number of twists",
-        caption:
-            "The fact about paper that §3 rests on, drawn as paper. A strip closed into a ring, with a string taped along each edge. Untwisted, the two strings lift apart. Put in one full twist and they cannot be separated however you pull. The Borsuk argument shows the strip swept between the two graphs closes up with an odd number of twists; this is the picture of why that settles it. Nothing here is a sphere, a map or a torus — it is the one figure in the set with no mathematics in it beyond the twisting, which is the point.",
-        panels: [
-            {
-                file: "borsuk-strip-untwisted",
-                page: "strip-render",
-                preset: "strip-untwisted",
-                size: "1400x900",
-                caption: "(a) no twist: the two edge curves come apart.",
-            },
-            {
-                file: "borsuk-strip-twisted",
-                page: "strip-render",
-                preset: "strip-twisted",
-                size: "1400x900",
-                caption: "(b) one full twist: the two edge curves are linked.",
-            },
-        ],
-    },
     // ------------------------------------------------------------------ §4
-    {
-        number: 9,
-        section: "§4 Poincaré",
-        title: "How f_γ is built",
-        caption:
-            "Two things side by side. Left, a sphere with a circle drawn on it and, at one point of that circle, three arrows: the direction you are walking, the direction ninety degrees from it, and the wind at that spot. Right, a flat disc with that same wind arrow drawn from its centre. The definition is “lay the tangent plane flat on the disc so your walking direction points right, then see where the wind lands” — one sentence in §4, never drawn, and the biggest single leap in the paper.",
-        panels: [
-            {
-                file: "poincare-frame",
-                page: "poincare-render",
-                preset: "frame",
-                size: "1560x860",
-                caption: "The moving frame at γ(θ), and the fibre disk it lands the vector in.",
-            },
-        ],
-    },
-    {
-        number: 10,
-        section: "§4 Poincaré",
-        title: "The loop, and its reverse",
-        caption:
-            "Two spheres. Left: a sphere covered in small arrows for the wind, with a little red loop near the north pole — the paper's Figure 5, redrawn. Right: that loop being stretched — down past the tropics to the equator, on down to a small loop at the south pole, then up over the north pole and home, now running the other way round. Four sentences in the paper, no picture.",
-        panels: [
-            {
-                file: "poincare-fur",
-                page: "poincare-render",
-                preset: "sphere-fur-loop",
-                caption: "A tangent field on S², and the small loop γ near the north pole.",
-            },
-            {
-                file: "poincare-loop-family",
-                page: "poincare-render",
-                preset: "loop-family",
-                caption: "The deformation γ → γ̄, as a family of loops on the sphere.",
-            },
-        ],
-    },
-    {
-        number: 11,
-        section: "§4 Poincaré",
-        title: "The graph must cross the core",
-        caption:
-            "Three doughnuts. Left: the graph for the small northern loop, a green curve winding once around as it travels round. Right: the graph after the loop has been reversed, winding the opposite way. Middle: somewhere in between the green curve touches the black core, and a point on the core means the wind is zero there. HONEST WARNING: as rendered today the left and right panels look identical — the thing that tells them apart is not visible from this camera. The fix is a row of fibre discs under each, showing the point going round one way and then the other.",
-        panels: [
-            {
-                file: "poincare-bookend-11",
-                page: "poincare-render",
-                preset: "bookend-1-1",
-                caption: "γ, the small north loop: Γ_{f_γ} is the (1,1)-curve.",
-            },
-            {
-                file: "poincare-crossing",
-                page: "poincare-render",
-                preset: "crossing",
-                caption: "Mid-deformation, the graph meets the core: v = 0 there.",
-            },
-            {
-                file: "poincare-bookend-1-neg1",
-                page: "poincare-render",
-                preset: "bookend-1-neg1",
-                caption: "γ̄, the same loop reversed: Γ_{f_γ̄} is the (1,−1)-curve.",
-            },
-        ],
-    },
+
 ];
 
 /**

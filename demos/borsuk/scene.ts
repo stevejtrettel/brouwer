@@ -99,6 +99,14 @@ export interface BorsukScene {
      *  around as φ does; this pins the solved point, which is the one the
      *  figure is about. Cleared by passing null. */
     setPinchMarker(pin: { theta: number; x: number; y: number } | null): void;
+    /** Show the band swept between Γ_f and Γ_f̄, and the torus's core.
+     *
+     *  Both belong to §3's ARGUMENT, not to its setup. Figure 5(c) is only
+     *  saying "here are the two curves, read off the two loops"; a surface
+     *  stretched between them announces the twist before the reader has been
+     *  told there is one, and the core is scaffolding for a linking count that
+     *  has not started. Off for the setup panel, on for everything after. */
+    setBandAndCore(on: boolean): void;
     /** Stage the codomain panel as a FIGURE rather than as a demo.
      *
      *  On: the textured balloon hides and the pushed grid carries the image —
@@ -571,6 +579,10 @@ export function buildBorsukScene(
         setPairMarkers(on) {
             pairMarkers = on;
             refresh();
+        },
+        setBandAndCore(on) {
+            ribbon.visible = on;
+            torusView.core.visible = on;
         },
         setPinchMarker(pin) {
             pinchMarker = pin;
