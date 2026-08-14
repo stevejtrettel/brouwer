@@ -5,7 +5,7 @@
  * equator — an integer twist can only change by the curves touching, and a
  * touch means f(x) = f(−x). The gold dots on the sphere ALWAYS mark that
  * antipodal pair for the current map; ⊚ jumps to its latitude. The balloon
- * panel is sculptable by pointer alone. Everything else lives in lab.html.
+ * panel is sculptable by pointer alone. Everything else lives in the lab.
  */
 
 import { buildBorsukScene } from "./scene.ts";
@@ -68,3 +68,4 @@ float(
     }),
     { left: "18px", bottom: "18px" },
 );
+

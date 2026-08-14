@@ -266,6 +266,49 @@ export function buildNeighborhoods(grid: DiskGrid): Neighborhoods {
 }
 
 /**
+ * Diffuse a per-vertex SCALAR over the sheet, returning a new array.
+ *
+ * A fold-layer count is a step function: vertices either side of a crease
+ * differ by a whole layer, so using it directly as a height gives the sheet a
+ * crease of zero radius — a one-edge vertical cliff, whose triangles are
+ * near-degenerate exactly where the sheet doubles back on itself. That is what
+ * breaks visually when a fold is sharp: the crease has no width to hold a
+ * normal, so shading and the tracer both fail there.
+ *
+ * Jacobi passes give the bend a radius. Away from a crease the field is
+ * locally constant and a smoothing pass is the identity, so stacked flaps keep
+ * their full separation and only the folds themselves round over — which is
+ * what folded paper does. Diffusion runs over the SHEET's adjacency, not the
+ * plane it has been folded into; the two differ precisely at a crease.
+ */
+export function smoothVertexScalar(
+    hood: Neighborhoods,
+    field: Float32Array,
+    options: { passes?: number; weight?: number } = {},
+): Float32Array {
+    const passes = options.passes ?? 10;
+    const weight = options.weight ?? 0.5;
+    const V = field.length;
+    let a = Float32Array.from(field);
+    let b = new Float32Array(V);
+    for (let pass = 0; pass < passes; pass++) {
+        for (let i = 0; i < V; i++) {
+            const from = hood.start[i]!;
+            const to = hood.start[i + 1]!;
+            if (to === from) {
+                b[i] = a[i]!;
+                continue;
+            }
+            let sum = 0;
+            for (let k = from; k < to; k++) sum += a[hood.list[k]!]!;
+            b[i] = (1 - weight) * a[i]! + weight * (sum / (to - from));
+        }
+        [a, b] = [b, a];
+    }
+    return a;
+}
+
+/**
  * Wrinkle-ironing: Jacobi passes relaxing the DISPLACEMENT field
  * d = position − domain toward its neighborhood average. Constant and
  * (nearly) linear displacements — translations, stretches, shears — are

@@ -3,7 +3,8 @@ import { wrapToPi, unwrapAngles } from "../src/math/analysis/unwrap.ts";
 import { windingNumber, relativeWinding } from "../src/math/analysis/winding.ts";
 import { closestApproach, closestCoreApproach } from "../src/math/analysis/collisions.ts";
 import { sampleGraphCurve } from "../src/math/graphCurve.ts";
-import { set2 } from "../src/math/types.ts";
+import { set2, vec3 } from "../src/math/types.ts";
+import { mergeChartZeros } from "../src/math/analysis/sphereFieldZeros.ts";
 
 const N = 256;
 
@@ -94,5 +95,55 @@ describe("collisions", () => {
         const hit = closestCoreApproach(c);
         expect(hit.distance).toBeCloseTo(0.05, 6);
         expect(hit.theta).toBeCloseTo(Math.PI, 1);
+    });
+});
+
+describe("mergeChartZeros", () => {
+    // The sphere census runs two stereographic charts that overlap in a fat
+    // band around the equator, so a zero living there is found TWICE. Merging
+    // has to survive the sloppiest record degree.ts can emit: when Newton
+    // stalls on a PL crease it falls back to the cell CENTRE, so the two
+    // charts can disagree by a couple of cell widths.
+    const zero = (x: number, y: number, z: number, index: number | null, residual = 1e-13) => ({
+        position: vec3(x, y, z),
+        index,
+        residual,
+    });
+
+    it("merges the same equatorial zero seen by both charts", () => {
+        const merged = mergeChartZeros([[zero(1, 0, 0, 1)], [zero(1, 0, 0, 1)]]);
+        expect(merged.length).toBe(1);
+        expect(merged[0]!.index).toBe(1);
+    });
+
+    it("still merges when the two charts disagree at cell-centre accuracy", () => {
+        // the Newton-stall path: ≈ 2 chart cells apart, not the 1e-5 that a
+        // converged pair agrees to
+        const merged = mergeChartZeros([[zero(1, 0, 0, 1)], [zero(0.999995, 0.003, 0, 1)]]);
+        expect(merged.length).toBe(1);
+    });
+
+    it("keeps the better-localized record, and a real index over an unreliable one", () => {
+        const merged = mergeChartZeros([
+            [zero(1, 0, 0, null, 1e-3)],
+            [zero(1, 0, 0.002, -1, 1e-12)],
+        ]);
+        expect(merged.length).toBe(1);
+        expect(merged[0]!.index).toBe(-1);
+        expect(merged[0]!.residual).toBeCloseTo(1e-12, 15);
+    });
+
+    it("never merges two genuinely distinct zeros", () => {
+        // the tightest a combed 48×96 grid can place a ±1 pair is its own
+        // spacing, π/48 ≈ 0.065 — comfortably above the merge tolerance
+        const merged = mergeChartZeros([[zero(1, 0, 0, 1), zero(0.998, 0.065, 0, -1)], []]);
+        expect(merged.length).toBe(2);
+        expect(merged.map((z) => z.index).sort()).toEqual([-1, 1]);
+    });
+
+    it("leaves same-chart survivors alone (degree.ts already deduped them)", () => {
+        const tiny = 1e-9;
+        const merged = mergeChartZeros([[zero(1, 0, 0, 1), zero(1, tiny, 0, 1)], []]);
+        expect(merged.length).toBe(2);
     });
 });

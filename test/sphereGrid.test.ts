@@ -9,7 +9,7 @@ import {
 } from "../src/math/sphereGrid.ts";
 import { buildAdjacency } from "../src/math/diskGrid.ts";
 import { equatorialProjection, offsetProjection, spherePoint } from "../src/math/maps/sphereMaps.ts";
-import { projectedConstantField } from "../src/math/maps/tangentFields.ts";
+import { projectedConstantField, softClampLength } from "../src/math/maps/tangentFields.ts";
 import { findSphereFieldZeros } from "../src/math/analysis/sphereFieldZeros.ts";
 import { vec2, vec3, dot3, length3 } from "../src/math/types.ts";
 
@@ -238,6 +238,50 @@ describe("plTangentField", () => {
 
         const after = findSphereFieldZeros(v);
         expect(after.indexSum).toBe(2);
+    });
+
+    // REGRESSION: three overlapping strokes that split the +1 zero into a
+    // ±1 pair a few degrees apart. Under the census default minDepth = 2 the
+    // pair cancels inside a single chart cell and is pruned unseen, so
+    // Σ index came back 1 — the demo's whole claim ("combing can never
+    // cancel them") displayed as violated. sphereFieldZeros pins minDepth.
+    it("keeps Σ index = 2 when a comb stroke splits a zero into a ±1 pair", () => {
+        const strokes = [
+            { c: [0.707327, -0.695650, -0.125536], d: [-0.243758, -0.656939, 0.796149], sigma: 0.317936, strength: 3.862735 },
+            { c: [0.358364, 0.808264, 0.467210], d: [-0.065914, 0.338614, 0.790528], sigma: 0.322913, strength: 3.349742 },
+            { c: [0.576738, 0.738126, 0.350062], d: [-0.829051, 0.820654, 0.490379], sigma: 0.210056, strength: 2.968637 },
+        ];
+        const v = plTangentField(grid, projectedConstantField(1, 0, 0));
+        const hood = buildAdjacency(grid);
+        const scratch = new Float32Array(3 * grid.V);
+        const st = vec3();
+        for (const { c, d, sigma, strength } of strokes) {
+            const s2 = 2 * sigma * sigma;
+            for (let i = 0; i < grid.V; i++) {
+                const x = grid.domain[3 * i]!;
+                const y = grid.domain[3 * i + 1]!;
+                const z = grid.domain[3 * i + 2]!;
+                const w =
+                    strength *
+                    Math.exp(-((x - c[0]!) ** 2 + (y - c[1]!) ** 2 + (z - c[2]!) ** 2) / s2);
+                if (w < 1e-4) continue;
+                const dot = d[0]! * x + d[1]! * y + d[2]! * z;
+                st.x = v.vectors[3 * i]! + w * (d[0]! - dot * x);
+                st.y = v.vectors[3 * i + 1]! + w * (d[1]! - dot * y);
+                st.z = v.vectors[3 * i + 2]! + w * (d[2]! - dot * z);
+                softClampLength(st);
+                v.vectors[3 * i] = st.x;
+                v.vectors[3 * i + 1] = st.y;
+                v.vectors[3 * i + 2] = st.z;
+            }
+            smoothTangentVectors(grid, hood, v.vectors, scratch, { iterations: 4, lambda: 0.3 });
+        }
+
+        const census = findSphereFieldZeros(v);
+        // the pair really is there — this is not a census that found 2 zeros
+        expect(census.zeros.length).toBeGreaterThan(2);
+        expect(census.zeros.some((z) => z.index === -1)).toBe(true);
+        expect(census.indexSum).toBe(2);
     });
 
     it("snapshot/restore round-trips", () => {

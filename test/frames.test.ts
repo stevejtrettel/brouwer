@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { latitudeLoop, tangentGraphLoop, movingFrameAt } from "../src/math/frames.ts";
+import { latitudeLoop, tangentGraphLoop, movingFrameAt, overPoleFamily } from "../src/math/frames.ts";
 import { projectedConstantField } from "../src/math/maps/tangentFields.ts";
 import { sampleGraphCurve } from "../src/math/graphCurve.ts";
 import { windingNumber } from "../src/math/analysis/winding.ts";
@@ -46,5 +46,63 @@ describe("Poincaré orientation convention", () => {
         const loop = tangentGraphLoop(field, latitudeLoop(0.1, true));
         const curve = sampleGraphCurve(loop, N, "vector-field");
         expect(windingNumber(curve)).toBeCloseTo(-1, 4);
+    });
+});
+
+describe("over-the-pole homotopy γ → γ̄ (paper §4)", () => {
+    const alpha0 = 0.25;
+    const field = projectedConstantField(1, 0, 0);
+    const p = vec3();
+    const q = vec3();
+
+    it("starts at the α₀ latitude loop", () => {
+        const { loop } = overPoleFamily(0, alpha0);
+        const lat = latitudeLoop(alpha0);
+        for (const theta of [0, 1.3, 2.7, 5.1]) {
+            loop.evalLoop(theta, p);
+            lat.evalLoop(theta, q);
+            expect(p.x).toBeCloseTo(q.x, 8);
+            expect(p.y).toBeCloseTo(q.y, 8);
+            expect(p.z).toBeCloseTo(q.z, 8);
+        }
+    });
+
+    it("ends at the SAME circle traversed backwards: γ₁(θ) = γ₀(π − θ)", () => {
+        const { loop } = overPoleFamily(1, alpha0);
+        const lat = latitudeLoop(alpha0);
+        for (const theta of [0, 0.8, 2.2, 4.6]) {
+            loop.evalLoop(theta, p);
+            lat.evalLoop(Math.PI - theta, q);
+            expect(p.x).toBeCloseTo(q.x, 8);
+            expect(p.y).toBeCloseTo(q.y, 8);
+            expect(p.z).toBeCloseTo(q.z, 8);
+        }
+    });
+
+    it("is continuous where the legs meet (s = ½)", () => {
+        const a = overPoleFamily(0.5 - 1e-9, alpha0).loop;
+        const b = overPoleFamily(0.5 + 1e-9, alpha0).loop;
+        for (const theta of [0, 1.9, 3.8]) {
+            a.evalLoop(theta, p);
+            b.evalLoop(theta, q);
+            expect(p.x).toBeCloseTo(q.x, 6);
+            expect(p.y).toBeCloseTo(q.y, 6);
+            expect(p.z).toBeCloseTo(q.z, 6);
+        }
+    });
+
+    it("carries the graph from winding +1 to winding −1", () => {
+        const start = sampleGraphCurve(
+            tangentGraphLoop(field, overPoleFamily(0, alpha0).loop),
+            N,
+            "vector-field",
+        );
+        const end = sampleGraphCurve(
+            tangentGraphLoop(field, overPoleFamily(1, alpha0).loop),
+            N,
+            "vector-field",
+        );
+        expect(windingNumber(start)).toBeCloseTo(1, 4);
+        expect(windingNumber(end)).toBeCloseTo(-1, 4);
     });
 });

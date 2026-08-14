@@ -62,6 +62,16 @@ export interface SheetSculptorOptions {
     /** anything holding 2V interleaved positions with snapshot/restore
      *  (PLDiskMap, PLSphereMap) */
     sheet: { positions: Float32Array; snapshot(): Float32Array; restore(snap: Float32Array): void };
+    /** V fold-layer counts, maintained in step with the positions.
+     *
+     *  A folded sheet's STACKING ORDER is not recoverable from the map: two
+     *  different fold sequences can carry the sheet to the same image with the
+     *  flaps in a different order, and the image alone cannot tell them apart.
+     *  So it is not derived afterwards, it is recorded as it happens — every
+     *  fold gesture bumps the vertices it reflects, exactly as the scripted
+     *  bake does. Pass this and a sculpted map is savable as a real crumple,
+     *  with the layer field its sheet mesh needs. */
+    layers?: Float32Array;
     brush?: SheetBrush;
     /** panel (image) coords → sheet coords; default identity */
     toSheet?: (p: Vec2, out: Vec2) => void;
@@ -147,11 +157,17 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
     updateRim();
 
     // snapshot undo
+    const layers = opts.layers ?? null;
+    // undo has to unwind positions and layers together, or an undone fold would
+    // leave the stack order it created behind
     const undoStack: Float32Array[] = [];
+    const layerUndo: Float32Array[] = [];
     const MAX_UNDO = 60;
     function beginAction(): void {
         undoStack.push(sheet.snapshot());
+        if (layers) layerUndo.push(Float32Array.from(layers));
         if (undoStack.length > MAX_UNDO) undoStack.shift();
+        if (layerUndo.length > MAX_UNDO) layerUndo.shift();
     }
 
     type Drag =
@@ -164,18 +180,23 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
     const canvas = app.renderer.domElement;
 
     function pointerWorld(e: PointerEvent): boolean {
-        return app.views.pointerToWorld(
-            viewport,
-            e.clientX,
-            e.clientY,
-            window.innerWidth,
-            window.innerHeight,
-            pointer,
-        );
+        return app.views.pointerToWorld(viewport, e.clientX, e.clientY, pointer);
     }
 
+    // pointer arbitration: a gesture belongs to the PRIMARY button of the FIRST
+    // pointer down. Secondary buttons stay out of it, and a second finger
+    // arriving mid-gesture ENDS it rather than dragging the sheet from two
+    // places at once (the panel is 2D, but a second finger still means "pinch
+    // the view", never "keep sculpting").
+    let gesturePointer: number | null = null;
     const onDown = (e: PointerEvent): void => {
+        if (gesturePointer !== null) {
+            if (drag) onUp();
+            return;
+        }
+        if (e.button !== 0 || !e.isPrimary) return;
         if (!pointerWorld(e)) return;
+        gesturePointer = e.pointerId;
         drag = null;
 
         // rim grips take priority when clicked directly
@@ -226,7 +247,7 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
     };
 
     const onMove = (e: PointerEvent): void => {
-        if (!drag || !pointerWorld(e)) return;
+        if (!drag || e.pointerId !== gesturePointer || !pointerWorld(e)) return;
         toSheet(pointer, pre);
 
         if (drag.kind === "grab") {
@@ -251,14 +272,25 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
             // fold: crease = perpendicular bisector of [origin, cursor], re-baked
             // from the snapshot every move so it tracks the drag live
             const snap = undoStack[undoStack.length - 1]!;
+            const layerSnap = layers ? layerUndo[layerUndo.length - 1]! : null;
             if (Math.hypot(pre.x - drag.origin.x, pre.y - drag.origin.y) < 0.03) {
                 sheet.restore(snap);
+                if (layers && layerSnap) layers.set(layerSnap);
             } else {
                 const { t, angle } = foldTaking(drag.origin, pre);
                 const fold = creaseFold(t, angle);
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
                 const p = scratch;
                 for (let i = 0; i < topo.V; i++) {
                     set2(p, snap[2 * i]!, snap[2 * i + 1]!);
+                    // Which side of the crease this vertex started on, measured
+                    // BEFORE the reflection — the far side is the flap, and the
+                    // flap lands one layer up. Same test as the scripted bake.
+                    if (layers && layerSnap) {
+                        const v = -p.x * sin + p.y * cos;
+                        layers[i] = layerSnap[i]! + (v > t ? 1 : 0);
+                    }
                     fold.evalDisk(p, 0, p);
                     const r = Math.hypot(p.x, p.y);
                     if (r > 1) {
@@ -305,7 +337,9 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
         onEdit();
     });
 
-    const onUp = (): void => {
+    const onUp = (e?: PointerEvent): void => {
+        if (e && gesturePointer !== null && e.pointerId !== gesturePointer) return;
+        gesturePointer = null;
         if (!drag) return;
         if (drag.kind === "grab") {
             pinchDot.visible = false;
@@ -334,19 +368,24 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
 
     return {
         brush,
         undo() {
             const snap = undoStack.pop();
             if (snap) sheet.restore(snap);
+            const layerSnap = layerUndo.pop();
+            if (layers && layerSnap) layers.set(layerSnap);
             updateRim();
             onEdit();
             onCommit();
         },
         reset(to: Float32Array) {
             sheet.restore(to);
+            if (layers) layers.fill(0);
             undoStack.length = 0;
+            layerUndo.length = 0;
             updateRim();
             onEdit();
             onCommit();
@@ -355,6 +394,7 @@ export function attachSheetSculptor(opts: SheetSculptorOptions): SheetSculptor {
             canvas.removeEventListener("pointerdown", onDown);
             canvas.removeEventListener("pointermove", onMove);
             canvas.removeEventListener("pointerup", onUp);
+            canvas.removeEventListener("pointercancel", onUp);
         },
     };
 }

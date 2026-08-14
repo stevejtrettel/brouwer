@@ -3,6 +3,36 @@
 **Status: DRAFT for discussion (2026-07-06).**
 Companion to `linking_proofs_visualization_spec.md` (the *what*); this document is the *how*.
 
+---
+
+## Where the build diverged from this document (2026-08-11)
+
+Read the sections below as the original design discussion, not as a description
+of the code. Four decisions went the other way; `docs/roadmap.md` is the record
+of what actually shipped.
+
+- **§3 `ProofModel` was dropped, deliberately.** No demo instantiates a proof
+  object. Scenes ASSEMBLE views and components directly and own their own
+  refresh, because every attempt to hide the three proofs behind one interface
+  cost more than it saved. What survives of `math/proofs/` is loop builders
+  (`identityLoop`, `latitudeGraphLoop`, …), the detectors, and the one-line
+  `labeled` helper in `proofs/types.ts`. Don't re-add the interface.
+- **§7 Storyboard is still deferred**, now with the whole experimental cast to
+  stage if it ever lands.
+- **§10.2 UI: lil-gui is gone**, replaced by `src/ui/controls.ts` (the
+  thin-slider kit). Nothing in the project depends on it.
+- **§2 layout: one folder per demo.** `demos/<name>/main.ts` is the entry and
+  the folder name IS the build name; a story demo's `scene.ts` is the shared
+  assembly imported by its `<name>-lab` and `<name>-render` siblings. The
+  three-entry-HTML-files-per-demo arrangement is gone, and root `index.html` is
+  generated from `index.template.html` by `scripts/run-demo.mjs`.
+- **§8 testing extended past `src/math/`.** The control layer (pointer
+  arbitration, orbit gating) is unit-tested in node against a fake canvas
+  (`test/interaction.test.ts`), and `npm run test:ui` drives the built demos in
+  Chrome (`test/ui/`). Views and components are still verified visually; the
+  demos carry no test hooks, so the browser suite asserts only on rendered
+  canvas pixels and the kit's DOM readouts.
+
 Decisions already made:
 
 - **TypeScript, strict.** Interfaces in the math spec are already TS-shaped.

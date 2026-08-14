@@ -16,6 +16,7 @@ import { set2 } from "../src/math/types.ts";
 import { identityLoop, mapLoop } from "../src/math/proofs/brouwer.ts";
 import { displacedContraction, swirlMap } from "../src/math/maps/diskMaps.ts";
 import type { DiskMap } from "../src/math/maps/diskMaps.ts";
+import { diskPiercings } from "../src/components/SpanningDisk.ts";
 
 const N = 512;
 const torus = new SolidTorus();
@@ -122,5 +123,46 @@ describe("Brouwer linking narrative", () => {
         const [giF, gfF] = curvesAt(f, 1);
         expect(linkingNumber(gfS, giS).lk).toBe(0);
         expect(linkingNumber(gfF, giF).lk).toBe(1);
+    });
+});
+
+describe("the spanning disk (the paper's linking certificate, p. 6)", () => {
+    // "there is a disk in ℝ³ with the core curve as its boundary, and the
+    // (1,1)-curve pierces this disk in a single point." The disk is the flat one
+    // of radius R in the core's plane — in torus.ts coordinates the plane v = 0,
+    // pierced where ρ = R + a·u is less than R, i.e. where u < 0.
+    const identity = sampleGraphCurve(
+        (theta, out) => set2(out, Math.cos(theta), Math.sin(theta)),
+        512,
+        "identity",
+    );
+
+    it("the (1,1)-curve crosses the core's plane exactly twice", () => {
+        let crossings = 0;
+        for (let i = 0; i < identity.N; i++) {
+            const j = (i + 1) % identity.N;
+            if (identity.disk[2 * i + 1]! < 0 !== identity.disk[2 * j + 1]! < 0) crossings++;
+        }
+        expect(crossings).toBe(2);
+    });
+
+    it("pierces the disk exactly once — the other crossing is outside radius R", () => {
+        expect(diskPiercings(identity)).toHaveLength(1);
+    });
+
+    it("pierces at the inner equator, u = −1", () => {
+        const [theta] = diskPiercings(identity);
+        expect(theta).toBeCloseTo(Math.PI, 2); // u = cos θ = −1, so ρ = R − a
+    });
+
+    it("a curve riding the OUTER equator never reaches the disk", () => {
+        // v changes sign, but always at u > 0 (ρ > R), so it misses the disk and
+        // is unlinked from the core — the contrast the figure relies on
+        const outer = sampleGraphCurve(
+            (theta, out) => set2(out, 0.6 + 0.3 * Math.cos(theta), 0.3 * Math.sin(theta)),
+            512,
+            "map",
+        );
+        expect(diskPiercings(outer)).toHaveLength(0);
     });
 });

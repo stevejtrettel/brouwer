@@ -6,8 +6,13 @@
   "scripts": {
     "build:all": "node scripts/build-all.mjs",
     "dev": "node scripts/run-demo.mjs dev",
+    "dev:demos": "node scripts/run-demo.mjs site demos",
+    "dev:figures": "node scripts/run-demo.mjs site figures",
     "build": "node scripts/run-demo.mjs build",
     "preview": "node scripts/run-demo.mjs preview",
+    "dev:site": "node scripts/site.mjs dev",
+    "build:site": "node scripts/site.mjs build",
+    "preview:site": "node scripts/site.mjs preview",
     "test": "vitest run",
     "test:ui": "vitest run --config vitest.ui.config.ts",
     "figures": "node scripts/render-figures.mjs",

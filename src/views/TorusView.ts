@@ -19,6 +19,7 @@ import type { SolidTorus } from "../math/torus.ts";
 import type { GraphCurve, Vec3 } from "../math/types.ts";
 import { vec3 } from "../math/types.ts";
 
+import { attachOrbitGate } from "./orbitGate.ts";
 import { addCartoonLights } from "../components/theme.ts";
 import { TorusShell } from "../components/TorusShell.ts";
 import { CoreCurve } from "../components/CoreCurve.ts";
@@ -56,6 +57,9 @@ export interface TorusView {
     readonly camera: PerspectiveCamera;
     readonly controls: OrbitControls;
     readonly tubes: GraphTube[];
+    /** the core curve S¹ × {0} — figures may thin it (`core.radius`) or
+     *  hide it (`core.visible`) when it isn't part of the argument */
+    readonly core: CoreCurve;
     /** the fiber disk, or null when `meridian: false` */
     readonly meridian: MeridianDisk | null;
     /** gold pulsing collision markers */
@@ -79,7 +83,8 @@ export function createTorusView(options: TorusViewOptions): TorusView {
     const scene = new Scene();
     addCartoonLights(scene);
     app.applyEnvironment(scene);
-    scene.add(new TorusShell(torus), new CoreCurve(torus));
+    const core = new CoreCurve(torus);
+    scene.add(new TorusShell(torus), core);
 
     const meridian = options.meridian === false ? null : new MeridianDisk(torus);
     if (meridian) scene.add(meridian);
@@ -113,10 +118,7 @@ export function createTorusView(options: TorusViewOptions): TorusView {
     controls.enableDamping = true;
     app.addAnimateCallback(() => controls.update());
     // orbit only when the pointer is over THIS viewport
-    app.renderer.domElement.addEventListener("pointermove", (e) => {
-        const vp = app.views.viewportAt(e.clientX, e.clientY, window.innerWidth, window.innerHeight);
-        controls.enabled = vp?.name === name;
-    });
+    attachOrbitGate({ canvas: app.renderer.domElement, views: app.views, name, controls });
 
     const scratch = vec3();
 
@@ -126,6 +128,7 @@ export function createTorusView(options: TorusViewOptions): TorusView {
         camera,
         controls,
         tubes,
+        core,
         meridian,
         markers,
         landmarks,

@@ -7,15 +7,17 @@
  * story layout. Chrome lives in the entries; status flows through hooks.
  */
 
-import { Color, OrthographicCamera, Scene } from "three";
+import { Color, OrthographicCamera, PerspectiveCamera, Scene } from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import { App } from "../../src/app/App.ts";
+import type { Viewport } from "../../src/app/ViewManager.ts";
 import { attachParameterSweep } from "../../src/app/ParameterSweep.ts";
 import { SolidTorus } from "../../src/math/torus.ts";
 import type { GraphCurve, Vec3 } from "../../src/math/types.ts";
 import { vec3 } from "../../src/math/types.ts";
 import { createGraphCurve, refillGraphCurve } from "../../src/math/graphCurve.ts";
-import { offsetProjection, spherePoint } from "../../src/math/maps/sphereMaps.ts";
+import { powerProjection, spherePoint } from "../../src/math/maps/sphereMaps.ts";
 import type { SphereDiskMap } from "../../src/math/maps/sphereMaps.ts";
 import { createSphereGrid, plSphereMap } from "../../src/math/sphereGrid.ts";
 import type { PLSphereMap } from "../../src/math/sphereGrid.ts";
@@ -38,6 +40,7 @@ import { SliceDisk } from "../../src/components/SliceDisk.ts";
 import { SpherePushforward } from "../../src/components/SpherePushforward.ts";
 import { makeSphereTexture } from "../../src/components/diskTexture.ts";
 import { DiskCurve2D } from "../../src/components/panel2d.ts";
+import { SlicePlate } from "../../src/components/SlicePlate.ts";
 import { createTorusView } from "../../src/views/TorusView.ts";
 import type { TorusView } from "../../src/views/TorusView.ts";
 import { createSphereView } from "../../src/views/SphereView.ts";
@@ -45,6 +48,9 @@ import type { SphereView } from "../../src/views/SphereView.ts";
 
 const N = 512;
 const EPSILON = 0.03;
+// ℓ_θ drawn across the band in the figure staging. Enough that the twist is
+// countable, few enough that the band still reads as a surface.
+const RUNG_COUNT = 32;
 
 export type BorsukMode = "story" | "render";
 
@@ -61,6 +67,24 @@ export interface BorsukScene {
     readonly torusView: TorusView;
     readonly sphere: SphereView;
     readonly ribbon: RibbonStrip;
+    /** the flattened-balloon panel (story mode): the codomain, and where the
+     *  map is sculpted. Scaffolding, never a figure — the figure page parks it
+     *  in the setup strip. */
+    readonly imagePanel: Viewport | null;
+    /** THE SAME SCENE, through a perspective camera: the codomain as a FIGURE
+     *  rather than as a sculpting surface.
+     *
+     *  A figure view has to be perspective — the workbench frames it, and the
+     *  path tracer drives that camera. The sculpting panel is orthographic
+     *  because dragging in it must be a plain screen-to-plane mapping. Rather
+     *  than build the crushed image twice, the same Scene is rendered through
+     *  a second camera. */
+    readonly imageFigure: {
+        scene: Scene;
+        viewport: Viewport;
+        camera: PerspectiveCamera;
+        controls: OrbitControls;
+    } | null;
     readonly sculptor: SheetSculptor | null;
     readonly f: PLSphereMap;
     readonly source: SphereDiskMap;
@@ -73,6 +97,15 @@ export interface BorsukScene {
     /** locate f(x) = f(−x) on the (possibly sculpted) PL map, jump to it;
      *  returns the pair (entries format their own caption), or null */
     findPair(): AntipodalPairResult | null;
+    /** the ℓ_θ row: five fibre disks side by side, each with its connecting
+     *  segment, so the half-twist can be counted. Hides the torus actors —
+     *  the figure is the row alone. Render mode only. */
+    setSegmentRow(on: boolean): void;
+    /** stage the band for a still: the shell's glass thinned so it stops
+     *  whiting out its own contents, faces painted separately so each
+     *  half-twist flips colour, ℓ_θ drawn across as rungs. Everything the
+     *  pole / pinch / equator panels share. */
+    setRibbonFigure(on: boolean): void;
     /** re-bake the analytic preset (after mutating source.params) */
     rebake(): void;
     /** restore the original preset positions */
@@ -87,18 +120,45 @@ export interface BorsukScene {
 }
 
 export function buildBorsukScene(
-    options: { mode?: BorsukMode; meridian?: boolean; thetaProbe?: boolean } = {},
+    options: {
+        mode?: BorsukMode;
+        meridian?: boolean;
+        thetaProbe?: boolean;
+        sculpt?: boolean;
+        /** build the ℓ_θ plate row (a figure device). Opt-in rather than keyed
+         *  to `mode`, because the render page runs the STORY assembly — it wants
+         *  the sculptable balloon — so it has to ask for figure furniture. */
+        segmentRow?: boolean;
+    } = {},
 ): BorsukScene {
     const mode = options.mode ?? "story";
+    // the balloon panel is sculptable by default (the lab); the website
+    // turns it off for now — the demo ships with the preset map only
+    const sculptable = options.sculpt ?? true;
     // the θ-probe furniture (slice point + antipode on the sphere, the
     // segment + dots on the image panel) only makes sense when a θ control
     // exists — the lab. Without it the probes freeze at θ = 0 and just
     // confuse; the website turns them off.
     const thetaProbe = options.thetaProbe ?? true;
 
-    // the map is DATA: a PL sphere map opened on the offset-projection preset
+    // the map is DATA: a PL sphere map opened on the power-projection
+    // preset (k = 1 ≡ the offset projection; odd k = 3, 5 gives k-twisted
+    // Möbius bands at the equator — the lab exposes the knob)
     const grid = createSphereGrid(48, 96);
-    const source = offsetProjection(0.35, 0.1, 0.15);
+    // Two staging choices in this one line, both about WHERE the proof's
+    // events fall rather than about the mathematics:
+    //
+    //   ψ = π/2   brings the antipodal pair round from θ = π to θ = 3π/2 — the
+    //             front of the torus at the house pose, where the pinch is
+    //             actually visible. A rotation of the domain, nothing more.
+    //   c = 0.7   widens the UNLINKED phase. The pair sits at tan φ* = c, so
+    //             the old c = 0.35 put the whole unlinked range inside
+    //             φ < 0.34: the "near-pole, untwisted" figure at φ = 0.32 was
+    //             a hair below the pinch and already half collapsed. At c = 0.7
+    //             the transition is at φ* ≈ 0.61, and a flat annulus, a pinch
+    //             and an odd twist are three genuinely different pictures.
+    //             (f(N) = (0.8, 0.15) still lands inside D², just.)
+    const source = powerProjection(1, 0.7, 0.1, 0.15, Math.PI / 2);
     const f = plSphereMap(grid, source);
     const presetPositions = f.snapshot();
 
@@ -125,12 +185,55 @@ export function buildBorsukScene(
         meridian: options.meridian ?? mode === "story",
     });
 
-    const ribbon = new RibbonStrip({ a: fCurve, b: fbarCurve, torus });
+    // same surface recipe as brouwer's push-to-core curtain: finer ruling,
+    // lightened color, solid enough to read as a surface (and the shared
+    // figure-mode treatment traces it as frosted glass)
+    const ribbon = new RibbonStrip({
+        a: fCurve,
+        b: fbarCurve,
+        torus,
+        width: 16,
+        color: 0xb9aef0, // light ribbon violet
+        opacity: 0.72,
+    });
     torusView.scene.add(ribbon);
 
     const ghostF = new GhostTrail({ torus, source: fCurve });
     const ghostFbar = new GhostTrail({ torus, source: fbarCurve });
     torusView.scene.add(ghostF, ghostFbar);
+
+    let ribbonFigure = false;
+
+    // Figure 3 shows ℓ_θ at θ = 0 and θ = π only, which is enough to prove the
+    // endpoints swap but leaves "ℓ_θ rotates by kπ, k odd" as something to take
+    // on trust. A ROW of slices makes the rotation countable: five plates, five
+    // segments, each turned a little further than the last.
+    const ROW_THETAS = [0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4, Math.PI];
+    let segmentRow: SlicePlate[] = [];
+    if (options.segmentRow) {
+        segmentRow = ROW_THETAS.map((_, i) => {
+            const plate = new SlicePlate();
+            plate.scale.setScalar(0.92);
+            plate.position.set((i - (ROW_THETAS.length - 1) / 2) * 2.25, 0.35, 0);
+            plate.visible = false;
+            torusView.scene.add(plate);
+            return plate;
+        });
+    }
+
+    function updateSegmentRow(): void {
+        if (segmentRow.length === 0 || !segmentRow[0]!.visible) return;
+        for (let i = 0; i < ROW_THETAS.length; i++) {
+            const idx = Math.round((ROW_THETAS[i]! / (2 * Math.PI)) * N) % N;
+            const a = { x: fCurve.disk[2 * idx]!, y: fCurve.disk[2 * idx + 1]! };
+            const b = { x: fbarCurve.disk[2 * idx]!, y: fbarCurve.disk[2 * idx + 1]! };
+            segmentRow[i]!.setDots([
+                { x: a.x, y: a.y, color: roleColor("map") },
+                { x: b.x, y: b.y, color: roleColor("antipodal-map") },
+            ]);
+            segmentRow[i]!.setSegment(a, b, theme.ribbon.color);
+        }
+    }
 
     // ------------------------------------------------------ domain sphere
     const sphere = createSphereView({
@@ -142,6 +245,8 @@ export function buildBorsukScene(
 
     // ------------------------------------------------- image panel (story)
     let slice: SliceDisk | null = null;
+    let sliceViewport: Viewport | null = null;
+    let imageFigure: BorsukScene["imageFigure"] = null;
     let balloon: SpherePushforward | null = null;
     let sculptor: SheetSculptor | null = null;
     let fImageCurve: DiskCurve2D | null = null;
@@ -164,7 +269,27 @@ export function buildBorsukScene(
         sliceScene.add(fImageCurve, fbarImageCurve);
         const sliceCamera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
         sliceCamera.position.z = 5;
-        const sliceViewport = app.views.add({
+
+        // second camera on the same scene — the figure view (see imageFigure)
+        const figureCamera = new PerspectiveCamera(38, 1, 0.1, 100);
+        figureCamera.position.set(0, 0, 3.6);
+        const figureControls = new OrbitControls(figureCamera, app.renderer.domElement);
+        figureControls.enableDamping = true;
+        app.addAnimateCallback(() => figureControls.update());
+        const figureViewport = app.views.add({
+            name: "image-figure",
+            scene: sliceScene,
+            camera: figureCamera,
+            // parked off-canvas until a figure config frames it
+            rect: { x: 2, y: 2, w: 0.001, h: 0.001 },
+        });
+        imageFigure = {
+            scene: sliceScene,
+            viewport: figureViewport,
+            camera: figureCamera,
+            controls: figureControls,
+        };
+        sliceViewport = app.views.add({
             name: "slice",
             scene: sliceScene,
             camera: sliceCamera,
@@ -172,23 +297,25 @@ export function buildBorsukScene(
             orthoHalfHeight: 1.2,
         });
 
-        sculptor = attachSheetSculptor({
-            app,
-            viewport: sliceViewport,
-            scene: sliceScene,
-            topology: grid,
-            rest: presetPositions,
-            gripVertices: [],
-            sheet: f,
-            onEdit: () => {
-                balloon!.setPositions(f.positions);
-                refresh();
-            },
-            onCommit: () => {
-                recomputePair(); // the sculpted map's pair moves — re-locate it
-                refresh();
-            },
-        });
+        if (sculptable) {
+            sculptor = attachSheetSculptor({
+                app,
+                viewport: sliceViewport,
+                scene: sliceScene,
+                topology: grid,
+                rest: presetPositions,
+                gripVertices: [],
+                sheet: f,
+                onEdit: () => {
+                    balloon!.setPositions(f.positions);
+                    refresh();
+                },
+                onCommit: () => {
+                    recomputePair(); // the sculpted map's pair moves — re-locate it
+                    refresh();
+                },
+            });
+        }
     }
 
     // ----------------------------------------------------------- refresh
@@ -207,6 +334,7 @@ export function buildBorsukScene(
         if (ribbon.visible) ribbon.refit();
         fImageCurve?.refit(fCurve);
         fbarImageCurve?.refit(fbarCurve);
+        updateSegmentRow();
         sphere.setPhi(state.phi);
 
         const events = detectCollisions(fCurve, fbarCurve, EPSILON);
@@ -233,7 +361,10 @@ export function buildBorsukScene(
             status.status = "twist 0 — an untwisted band: the curves could be pulled apart";
             status.tone = "quiet";
         } else {
-            status.status = `twist ${link.lk} — a Möbius band: the curves cannot separate without touching`;
+            // NOT a Möbius band: ℓ_θ returns to itself after 2kπ, so the closed
+            // band is an annulus with k FULL twists and two boundary curves —
+            // which is the whole point, since the two curves are Γ_f and Γ_f̄
+            status.status = `twist ${link.lk} — an odd number of full twists: the curves cannot separate without touching`;
             status.tone = "linked";
         }
         status.caption = events.length
@@ -356,6 +487,8 @@ export function buildBorsukScene(
         torusView,
         sphere,
         ribbon,
+        imagePanel: sliceViewport,
+        imageFigure,
         sculptor,
         f,
         source,
@@ -387,6 +520,39 @@ export function buildBorsukScene(
             scene.hooks.onStateJump?.(state.phi, state.theta);
             refresh();
             return pair;
+        },
+        setSegmentRow(on) {
+            if (segmentRow.length === 0) return;
+            for (const plate of segmentRow) plate.visible = on;
+            // the row IS the figure: the torus and its curves would only crowd it
+            torusView.scene.traverse((obj) => {
+                if (obj.userData.figureGlass === true) obj.visible = !on;
+            });
+            for (const tube of torusView.tubes) tube.visible = !on;
+            ribbon.visible = !on;
+            torusView.core.visible = !on && !ribbonFigure;
+            for (const marker of torusView.markers) if (on) marker.visible = false;
+            refresh();
+        },
+        setRibbonFigure(on) {
+            ribbonFigure = on;
+            // The shell STAYS. Its glass thins instead: this band fills the
+            // torus, so at the house ior the shell is seen at a grazing angle
+            // over the whole subject and Fresnel whites it out — which is what
+            // made the old equator figure a dark, muddy mass. (Deleting the
+            // shell and outlining the torus with two circles fixed the light
+            // and lost the doughnut: unexplained rings in a plane read as
+            // debris, not as a solid torus.)
+            torusView.scene.traverse((obj) => {
+                if (obj.userData.figureGlass !== true) return;
+                obj.userData.figureGlassIor = on ? theme.paper.glass.iorThin : undefined;
+            });
+            // the core plays no part in §3 — the argument is about the band's
+            // two edges — and it reads as a third curve behind the band
+            torusView.core.visible = !on;
+            ribbon.setTwoTone(on);
+            ribbon.setRungs(on ? RUNG_COUNT : 0);
+            refresh();
         },
         rebake() {
             f.resetToPreset(source);

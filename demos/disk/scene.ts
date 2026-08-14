@@ -16,18 +16,16 @@ import { vec2, set2 } from "../../src/math/types.ts";
 import type { DiskMap } from "../../src/math/maps/diskMaps.ts";
 import { similarityMap, identityMap } from "../../src/math/maps/diskMaps.ts";
 import { createDiskGrid, plDiskMap, orientationCounts } from "../../src/math/diskGrid.ts";
-import type { PLDiskMap } from "../../src/math/diskGrid.ts";
+import type { DiskGrid, PLDiskMap } from "../../src/math/diskGrid.ts";
 import { findAllFixedPoints } from "../../src/math/proofs/brouwer.ts";
 
 import { theme } from "../../src/components/theme.ts";
 import { makeDiskTexture } from "../../src/components/diskTexture.ts";
-import { DiskDot } from "../../src/components/panel2d.ts";
 import { attachSheetSculptor } from "../../src/components/SheetSculptor.ts";
 import type { SheetBrush, SheetSculptor } from "../../src/components/SheetSculptor.ts";
 import { createDiskView } from "../../src/views/DiskView.ts";
 import type { DiskView } from "../../src/views/DiskView.ts";
 
-const SADDLE_COLOR = 0x8d4fd3;
 
 export interface DiskMeters {
     folds: string;
@@ -36,6 +34,19 @@ export interface DiskMeters {
 }
 
 export interface DiskScene {
+    /** the composed map actually being drawn: post ∘ sheet. This, not `post`
+     *  or `sheet` alone, is what a fixed-point census must be run on. */
+    readonly map: DiskMap;
+    /** the grid the sheet is sculpted on — a crumple is only valid on this one */
+    readonly grid: DiskGrid;
+    /** V fold-layer counts, kept in step with sheet.positions by the sculptor.
+     *  Saved WITH the map: the stacking order of a folded sheet is not
+     *  recoverable from its image. */
+    readonly layers: Float32Array;
+    /** replace the map wholesale — loading a saved crumple */
+    applyCrumple(crumple: { positions: Float32Array; layers: Float32Array }): void;
+    /** the current map and its layers, ready to serialize */
+    toCrumple(): { positions: Float32Array; layers: Float32Array };
     readonly app: App;
     readonly brush: SheetBrush;
     readonly sculptor: SheetSculptor;
@@ -59,6 +70,7 @@ export function buildDiskScene(): DiskScene {
     // ---- the map: post similarity ∘ PL sheet ----
     const grid = createDiskGrid(64, 128);
     const sheet = plDiskMap(grid);
+    const layers = new Float32Array(grid.V);
     const post = similarityMap(1, 0, 0);
 
     const f: DiskMap = {
@@ -83,17 +95,16 @@ export function buildDiskScene(): DiskScene {
     const app = new App();
     const texture = makeDiskTexture();
 
-    // domain (left): flat textured disk + static grip markers + fixed-point dots
-    const domain = createDiskView({ app, name: "domain", rect: { x: 0, y: 0, w: 0.5, h: 1 }, texture, dots: 12 });
+    // domain (left): flat textured disk + fixed-point dots
+    const domain = createDiskView({
+        app,
+        name: "domain",
+        rect: { x: 0, y: 0, w: 0.5, h: 1 },
+        texture,
+        dots: 12,
+        orthoHalfHeight: 1.35,
+    });
     domain.disk.refit(identityMap());
-    for (let i = 0; i < 12; i++) {
-        const v = 1 + (grid.rings - 1) * grid.sectors + Math.floor(i * (grid.sectors / 12));
-        const dot = new DiskDot(0.022);
-        dot.setColor(theme.roles.identity);
-        dot.position.set(grid.domain[2 * v]!, grid.domain[2 * v + 1]!, 0.02);
-        dot.visible = true;
-        domain.scene.add(dot);
-    }
 
     // image (right): the crumpled domain f(D²) — EDITABLE (sculptor below)
     const image = createDiskView({
@@ -105,6 +116,7 @@ export function buildDiskScene(): DiskScene {
         opacity: 0.85,
         backdrop: true,
         dots: 12,
+        orthoHalfHeight: 1.35,
     });
 
     // ---- refresh: cheap every drag frame, census on release ----
@@ -114,10 +126,23 @@ export function buildDiskScene(): DiskScene {
 
     const scene: DiskScene = {
         app,
+        map: f,
         brush: { sigma: 0.3, smoothing: 0.35, springback: 0.4 },
         sculptor: null as unknown as SheetSculptor, // assigned below
         post,
         sheet,
+        grid,
+        layers,
+        applyCrumple(crumple) {
+            sheet.positions.set(crumple.positions);
+            layers.set(crumple.layers);
+            refresh();
+            census();
+        },
+        toCrumple: () => ({
+            positions: Float32Array.from(sheet.positions),
+            layers: Float32Array.from(layers),
+        }),
         domain,
         image,
         refresh,
@@ -142,16 +167,17 @@ export function buildDiskScene(): DiskScene {
     }
 
     function census(): void {
-        // minDepth 4: sculpted folds put gold/violet pairs close to their creases
+        // minDepth 4: sculpted folds put fixed-point pairs close to their creases
         const { fixedPoints, indexSum, degenerate } = findAllFixedPoints(f, 0, { minDepth: 4 });
         meters.fixedPoints = degenerate ? "∞ (f ≈ id on a region)" : String(fixedPoints.length);
         meters.indexSum =
             indexSum === null ? "—" : indexSum === 1 ? "1 = L(f) ✓" : `${indexSum} ✗ (should be 1)`;
-        // fixed points marked in BOTH panels (f(x*) = x*, so same coordinates)
+        // fixed points marked in BOTH panels (f(x*) = x*, so same coordinates);
+        // all gold — the demo chases fixed points, it doesn't classify them
         const specs = fixedPoints.map((fp) => ({
             x: fp.x.x,
             y: fp.x.y,
-            color: fp.index === -1 ? SADDLE_COLOR : theme.marker,
+            color: theme.marker,
         }));
         domain.setDots(specs);
         image.setDots(specs);
@@ -166,6 +192,7 @@ export function buildDiskScene(): DiskScene {
         scene: image.scene,
         grid,
         sheet,
+        layers,
         brush: scene.brush,
         // drags happen in the post-transformed (final) coordinates
         toSheet: postInverse,

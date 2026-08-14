@@ -1,0 +1,36 @@
+---
+import { getCollection, render } from 'astro:content';
+import type { CollectionEntry } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+export async function getStaticPaths() {
+  const theorems = await getCollection('theorems', ({ data }) => !data.draft);
+  return theorems.map((entry) => ({
+    params: { theorem: entry.id },
+    props: { entry },
+  }));
+}
+
+interface Props {
+  entry: CollectionEntry<'theorems'>;
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<Base title={entry.data.title}>
+  <main>
+    <header class="theorem-header">
+      <p class="kicker">Theorem</p>
+      <h1>{entry.data.title}</h1>
+    </header>
+
+    <Content />
+
+    <aside class="play-banner">
+      <span>Try the interactive version — sculpt the map and watch the proof happen.</span>
+      <a class="button" href={`/${entry.id}/play/`}>Play &rarr;</a>
+    </aside>
+  </main>
+</Base>

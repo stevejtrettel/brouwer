@@ -15,6 +15,7 @@ import type { SolidTorus } from "../math/torus.ts";
 import { createGraphCurve } from "../math/graphCurve.ts";
 import { GraphTube } from "./GraphTube.ts";
 
+// raster defaults: quiet enough to sit behind the live curve on screen
 const OPACITY_NEWEST = 0.32;
 const OPACITY_FLOOR = 0.07;
 
@@ -23,6 +24,8 @@ export class GhostTrail extends Group {
     private readonly tubes: GraphTube[];
     private readonly curves: GraphCurve[];
     private readonly stamps: number[];
+    private readonly newest: number;
+    private readonly floor: number;
     private next = 0;
     private counter = 0;
 
@@ -32,9 +35,15 @@ export class GhostTrail extends Group {
         /** pool size (default 6) */
         count?: number;
         radius?: number;
+        /** fade range, newest → oldest. A path-traced figure needs stronger
+         *  trails than the screen does: inside the glass shell, against a
+         *  bright environment, the raster defaults wash out to nothing. */
+        opacity?: { newest: number; floor: number };
     }) {
         super();
         const count = options.count ?? 6;
+        this.newest = options.opacity?.newest ?? OPACITY_NEWEST;
+        this.floor = options.opacity?.floor ?? OPACITY_FLOOR;
         this.source = options.source;
         this.curves = Array.from({ length: count }, (_, i) =>
             createGraphCurve(options.source.N, options.source.role, `ghost-${i}`),
@@ -74,7 +83,7 @@ export class GhostTrail extends Group {
         for (let rank = 0; rank < ranked.length; rank++) {
             const material = ranked[rank]!.tube.material as MeshPhysicalMaterial;
             material.opacity =
-                OPACITY_FLOOR + (OPACITY_NEWEST - OPACITY_FLOOR) * (1 - rank / this.tubes.length);
+                this.floor + (this.newest - this.floor) * (1 - rank / this.tubes.length);
         }
     }
 

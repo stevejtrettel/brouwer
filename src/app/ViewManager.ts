@@ -38,6 +38,11 @@ export interface Viewport {
 
 export class ViewManager {
     readonly viewports: Viewport[] = [];
+    /** Painted over the WHOLE canvas before the viewports are drawn. Set it
+     *  when the viewports no longer cover the canvas — the figure workbench
+     *  insets the figure to its true aspect, and without a matte the area
+     *  around it keeps whatever the last frame left there. */
+    matte: Color | null = null;
     private width = 1;
     private height = 1;
 
@@ -49,7 +54,15 @@ export class ViewManager {
 
     /** Called with the canvas size in CSS pixels — NOT the drawing-buffer
      *  size. renderer.setViewport/setScissor multiply by the device pixel
-     *  ratio internally, so all rect math here stays in CSS space. */
+     *  ratio internally, so all rect math here stays in CSS space.
+     *
+     *  This size is also what the pointer helpers below measure against, so
+     *  they stay correct for free as the canvas resizes. NOTE: they take
+     *  pointer coordinates as CANVAS-relative CSS pixels, and every caller
+     *  currently passes `event.clientX/clientY` — which is the same thing
+     *  only while the canvas is flush with the viewport origin. A demo that
+     *  mounts into an offset container (App's `container` option) must
+     *  subtract the canvas rect itself. */
     resize(width: number, height: number): void {
         this.width = width;
         this.height = height;
@@ -77,6 +90,12 @@ export class ViewManager {
     }
 
     render(renderer: WebGLRenderer): void {
+        if (this.matte) {
+            renderer.setScissorTest(false);
+            renderer.setViewport(0, 0, this.width, this.height);
+            renderer.setClearColor(this.matte, 1);
+            renderer.clear();
+        }
         renderer.setScissorTest(true);
         for (const vp of this.viewports) {
             const x = Math.floor(vp.rect.x * this.width);
@@ -101,14 +120,12 @@ export class ViewManager {
         vp: Viewport,
         cssX: number,
         cssY: number,
-        cssWidth: number,
-        cssHeight: number,
         out: { x: number; y: number },
     ): boolean {
         const cam = vp.camera as OrthographicCamera;
         if (!cam.isOrthographicCamera) return false;
-        const fx = cssX / cssWidth;
-        const fy = 1 - cssY / cssHeight;
+        const fx = cssX / this.width;
+        const fy = 1 - cssY / this.height;
         const lx = (fx - vp.rect.x) / vp.rect.w;
         const ly = (fy - vp.rect.y) / vp.rect.h;
         if (lx < 0 || lx > 1 || ly < 0 || ly > 1) return false;
@@ -125,12 +142,10 @@ export class ViewManager {
         vp: Viewport,
         cssX: number,
         cssY: number,
-        cssWidth: number,
-        cssHeight: number,
         out: { x: number; y: number },
     ): boolean {
-        const fx = cssX / cssWidth;
-        const fy = 1 - cssY / cssHeight;
+        const fx = cssX / this.width;
+        const fy = 1 - cssY / this.height;
         const lx = (fx - vp.rect.x) / vp.rect.w;
         const ly = (fy - vp.rect.y) / vp.rect.h;
         if (lx < 0 || lx > 1 || ly < 0 || ly > 1) return false;
@@ -140,9 +155,9 @@ export class ViewManager {
     }
 
     /** Which viewport contains a pointer position (CSS pixels, top-left origin)? */
-    viewportAt(cssX: number, cssY: number, cssWidth: number, cssHeight: number): Viewport | null {
-        const fx = cssX / cssWidth;
-        const fy = 1 - cssY / cssHeight; // flip to bottom-left origin
+    viewportAt(cssX: number, cssY: number): Viewport | null {
+        const fx = cssX / this.width;
+        const fy = 1 - cssY / this.height; // flip to bottom-left origin
         for (const vp of this.viewports) {
             const { x, y, w, h } = vp.rect;
             if (fx >= x && fx <= x + w && fy >= y && fy <= y + h) return vp;

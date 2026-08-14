@@ -17,7 +17,7 @@
  * matching SphereView.setOrbitGate keeps OrbitControls out of the way.
  */
 
-import { Raycaster, Vector2, Vector3, type PerspectiveCamera, type Scene } from "three";
+import { Raycaster, Vector2, Vector3, type PerspectiveCamera } from "three";
 import type { App } from "../app/App.ts";
 import type { Viewport } from "../app/ViewManager.ts";
 import type { SphereGrid, PLTangentField } from "../math/sphereGrid.ts";
@@ -26,8 +26,6 @@ import { buildAdjacency } from "../math/diskGrid.ts";
 import { softClampLength } from "../math/maps/tangentFields.ts";
 import { vec3 } from "../math/types.ts";
 import { worldToMath } from "./arrows.ts";
-import { Marker } from "./Marker.ts";
-import { theme } from "./theme.ts";
 
 export interface CombBrush {
     /** chordal Gaussian radius on the sphere */
@@ -43,8 +41,6 @@ export interface SphereBrushOptions {
     /** the sphere view's viewport (perspective) */
     viewport: Viewport;
     camera: PerspectiveCamera;
-    /** scene the touch-point feedback marker is added to */
-    scene: Scene;
     grid: SphereGrid;
     field: PLTangentField;
     brush?: CombBrush;
@@ -58,6 +54,8 @@ export interface SphereBrushOptions {
 
 export interface SphereBrush {
     readonly brush: CombBrush;
+    /** a stroke is in progress (entries pause sphere auto-rotate on this) */
+    readonly active: boolean;
     undo(): void;
     /** restore vectors, clear undo, and commit — e.g. a reset button */
     reset(to: Float32Array): void;
@@ -67,15 +65,11 @@ export interface SphereBrush {
 const MAX_UNDO = 60;
 
 export function attachSphereBrush(opts: SphereBrushOptions): SphereBrush {
-    const { app, viewport, camera, scene, grid, field, enabled, onEdit, onCommit } = opts;
+    const { app, viewport, camera, grid, field, enabled, onEdit, onCommit } = opts;
     const brush = opts.brush ?? { sigma: 0.35, strength: 2, smoothing: 0.35 };
 
     const hood = buildAdjacency(grid);
     const smoothScratch = new Float32Array(3 * grid.V);
-
-    const touchDot = new Marker(0.05);
-    touchDot.setColor(theme.marker);
-    scene.add(touchDot);
 
     // snapshot undo (SheetSculptor's scheme)
     const undoStack: Float32Array[] = [];
@@ -102,9 +96,7 @@ export function attachSphereBrush(opts: SphereBrushOptions): SphereBrush {
 
     /** Pointer → math-coordinates point on the unit sphere, or false. */
     function pointerToSphere(e: PointerEvent): boolean {
-        if (!app.views.pointerToNDC(viewport, e.clientX, e.clientY, window.innerWidth, window.innerHeight, ndc)) {
-            return false;
-        }
+        if (!app.views.pointerToNDC(viewport, e.clientX, e.clientY, ndc)) return false;
         raycaster.setFromCamera(ndc, camera);
         // analytic unit-sphere intersection: |o + t·d|² = 1, d unit
         const o = raycaster.ray.origin;
@@ -120,8 +112,20 @@ export function attachSphereBrush(opts: SphereBrushOptions): SphereBrush {
         return true;
     }
 
+    // pointer arbitration: a stroke belongs to the PRIMARY button of the
+    // FIRST pointer down. Secondary buttons and second fingers are left to
+    // OrbitControls (entries that comb by default hand it right-drag /
+    // two-finger), and a second finger arriving mid-stroke ends the stroke
+    // rather than smearing it under a two-finger orbit.
+    let strokePointer: number | null = null;
     const onDown = (e: PointerEvent): void => {
+        if (strokePointer !== null) {
+            if (drag) onUp();
+            return;
+        }
+        if (e.button !== 0 || !e.isPrimary) return;
         if (!enabled() || !pointerToSphere(e)) return;
+        strokePointer = e.pointerId;
 
         const s2 = 2 * brush.sigma * brush.sigma;
         const weights = new Float32Array(grid.V);
@@ -137,13 +141,12 @@ export function attachSphereBrush(opts: SphereBrushOptions): SphereBrush {
             }
         }
         drag = { weights, affected, last: { x: hit.x, y: hit.y, z: hit.z } };
-        touchDot.visible = true;
         beginAction();
         canvas.setPointerCapture(e.pointerId);
     };
 
     const onMove = (e: PointerEvent): void => {
-        if (!drag || !pointerToSphere(e)) return;
+        if (!drag || e.pointerId !== strokePointer || !pointerToSphere(e)) return;
         delta.x = hit.x - drag.last.x;
         delta.y = hit.y - drag.last.y;
         delta.z = hit.z - drag.last.z;
@@ -166,7 +169,6 @@ export function attachSphereBrush(opts: SphereBrushOptions): SphereBrush {
             field.vectors[3 * i + 1] = stroke.y;
             field.vectors[3 * i + 2] = stroke.z;
         }
-        mathToWorldInto(touchDot, hit);
         onEdit();
     };
 
@@ -189,9 +191,10 @@ export function attachSphereBrush(opts: SphereBrushOptions): SphereBrush {
         onEdit();
     });
 
-    const onUp = (): void => {
+    const onUp = (e?: PointerEvent): void => {
+        if (e && strokePointer !== null && e.pointerId !== strokePointer) return;
+        strokePointer = null;
         if (!drag) return;
-        touchDot.visible = false;
         // no-op click: don't spend an undo slot if nothing moved
         const snap = undoStack[undoStack.length - 1]!;
         let moved = false;
@@ -211,9 +214,13 @@ export function attachSphereBrush(opts: SphereBrushOptions): SphereBrush {
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onUp);
 
     return {
         brush,
+        get active() {
+            return drag !== null;
+        },
         undo() {
             const snap = undoStack.pop();
             if (snap) field.restore(snap);
@@ -230,13 +237,7 @@ export function attachSphereBrush(opts: SphereBrushOptions): SphereBrush {
             canvas.removeEventListener("pointerdown", onDown);
             canvas.removeEventListener("pointermove", onMove);
             canvas.removeEventListener("pointerup", onUp);
-            scene.remove(touchDot);
-            touchDot.dispose();
+            canvas.removeEventListener("pointercancel", onUp);
         },
     };
-}
-
-/** Place the touch marker at a math-coordinates sphere point. */
-function mathToWorldInto(marker: Marker, p: { x: number; y: number; z: number }): void {
-    marker.position.set(p.x, p.z, -p.y).multiplyScalar(1.02);
 }

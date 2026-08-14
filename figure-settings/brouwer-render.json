@@ -1,0 +1,94 @@
+{
+    "small-r": {
+        "cam": [
+            0.4526,
+            3.3456,
+            8.2947,
+            0,
+            0,
+            0
+        ],
+        "size": "1440x900",
+        "state": {
+            "r": 0.02,
+            "theta": 5.1,
+            "slice": false,
+            "core": false,
+            "surface": false
+        },
+        "render": {
+            "spp": 768,
+            "scale": 2,
+            "bounces": 24
+        }
+    },
+    "crossing": {
+        "cam": [
+            4.3941,
+            3.2895,
+            7.0761,
+            0,
+            0,
+            0
+        ],
+        "size": "1440x900",
+        "state": {
+            "r": 0.5528762201950295,
+            "theta": 5.1,
+            "slice": false,
+            "core": false,
+            "surface": false
+        },
+        "render": {
+            "spp": 768,
+            "scale": 2,
+            "bounces": 24
+        }
+    },
+    "r-1": {
+        "cam": [
+            -5.0656,
+            3.4291,
+            -6.5407,
+            0,
+            0,
+            0
+        ],
+        "size": "1440x900",
+        "state": {
+            "r": 1,
+            "theta": 5.1,
+            "slice": false,
+            "core": false,
+            "surface": false
+        },
+        "render": {
+            "spp": 768,
+            "scale": 2,
+            "bounces": 24
+        }
+    },
+    "push-core-ghosts": {
+        "cam": [
+            -4.3359,
+            3.3783,
+            6.4494,
+            -1.5503,
+            0.0087,
+            -0.2051
+        ],
+        "size": "1440x900",
+        "state": {
+            "r": 1,
+            "theta": 0.29845130209103,
+            "slice": true,
+            "core": true,
+            "surface": true
+        },
+        "render": {
+            "spp": 768,
+            "scale": 2,
+            "bounces": 24
+        }
+    }
+}

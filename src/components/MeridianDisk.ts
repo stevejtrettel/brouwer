@@ -12,7 +12,10 @@ import {
     Group,
     Mesh,
     MeshBasicMaterial,
+    MeshPhysicalMaterial,
     RingGeometry,
+    TorusGeometry,
+    type Material,
 } from "three";
 import type { SolidTorus } from "../math/torus.ts";
 import { Params } from "../core/Params.ts";
@@ -26,30 +29,56 @@ export class MeridianDisk extends Group {
     private disk: Mesh;
     private rim: Mesh;
 
-    constructor(torus: SolidTorus, options: { theta?: number } = {}) {
+    constructor(
+        torus: SolidTorus,
+        options: { theta?: number; style?: "diagram" | "figure" } = {},
+    ) {
         super();
         this.torus = torus;
 
+        // "diagram" is the raster-preview plate (basic transparent — figure
+        // mode hides it); "figure" survives the path tracer: physical
+        // materials only, and a real tube rim instead of a flat ring
+        const figure = options.style === "figure";
         this.disk = new Mesh(
             new CircleGeometry(1, 64),
-            new MeshBasicMaterial({
-                color: theme.meridian.color,
-                transparent: true,
-                opacity: theme.meridian.opacity,
-                side: DoubleSide,
-                depthWrite: false,
-            }),
+            figure
+                ? new MeshPhysicalMaterial({
+                      color: theme.meridian.color,
+                      transparent: true,
+                      opacity: 0.3,
+                      roughness: 0.5,
+                      metalness: 0,
+                      side: DoubleSide,
+                      depthWrite: false,
+                  })
+                : new MeshBasicMaterial({
+                      color: theme.meridian.color,
+                      transparent: true,
+                      opacity: theme.meridian.opacity,
+                      side: DoubleSide,
+                      depthWrite: false,
+                  }),
         );
-        this.rim = new Mesh(
-            new RingGeometry(0.985, 1.0, 64),
-            new MeshBasicMaterial({
-                color: theme.meridian.color,
-                transparent: true,
-                opacity: Math.min(1, theme.meridian.opacity * 3),
-                side: DoubleSide,
-                depthWrite: false,
-            }),
-        );
+        this.rim = figure
+            ? new Mesh(
+                  new TorusGeometry(1, 0.014, 10, 96),
+                  new MeshPhysicalMaterial({
+                      color: theme.meridian.color,
+                      roughness: 0.45,
+                      metalness: 0,
+                  }),
+              )
+            : new Mesh(
+                  new RingGeometry(0.985, 1.0, 64),
+                  new MeshBasicMaterial({
+                      color: theme.meridian.color,
+                      transparent: true,
+                      opacity: Math.min(1, theme.meridian.opacity * 3),
+                      side: DoubleSide,
+                      depthWrite: false,
+                  }),
+              );
         this.disk.renderOrder = 5;
         this.rim.renderOrder = 5;
         this.add(this.disk, this.rim);
@@ -78,7 +107,7 @@ export class MeridianDisk extends Group {
     dispose(): void {
         for (const mesh of [this.disk, this.rim]) {
             mesh.geometry.dispose();
-            (mesh.material as MeshBasicMaterial).dispose();
+            (mesh.material as Material).dispose();
         }
     }
 }

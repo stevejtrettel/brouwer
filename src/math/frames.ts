@@ -17,7 +17,7 @@
  */
 
 import type { Vec3, DiskLoop } from "./types.ts";
-import { set2, set3, vec3, cross3, normalize3, dot3, addScaled3 } from "./types.ts";
+import { set2, set3, copy3, vec3, cross3, normalize3, dot3, addScaled3 } from "./types.ts";
 import type { TangentVectorField } from "./maps/tangentFields.ts";
 
 export interface SphereLoop {
@@ -40,6 +40,78 @@ export function latitudeLoop(phi: number, reversed = false): SphereLoop {
                 s * Math.cos(sign * theta),
                 s * Math.sin(sign * theta),
                 Math.cos(phi),
+            );
+        },
+    };
+}
+
+/**
+ * The paper's "ace out of our sleeve": the unit-speed family deforming the
+ * small north loop γ to its reverse γ̄ (§4). One parameter s ∈ [0, 1]:
+ *
+ *   leg 1 (s ≤ ½)  c = N fixed, angular radius α₀ → π − α₀: γ stretches
+ *                  through the Tropic of Cancer, the equator, the Tropic
+ *                  of Capricorn, to a small loop around the south pole
+ *                  (a circle centered at N with radius π − α₀ IS that loop);
+ *   leg 2 (s ≥ ½)  radius π − α₀ fixed, the center rides the x–z meridian
+ *                  from N to S — equivalently the small loop climbs the
+ *                  far meridian and over the north pole, home again.
+ *
+ * At s = 1 the circle centered at S with radius π − α₀ is the original
+ * latitude circle traversed BACKWARDS: γ₁(θ) = γ₀(π − θ). The transport
+ * frame w = ŷ is constant and never parallel to the center, so the family
+ * is continuous (and each loop constant-speed, hence unit-speed after the
+ * frame's normalization).
+ */
+export interface SmallCircle {
+    loop: SphereLoop;
+    /** circle center on S² (math z-up) — for domain-view display */
+    center: Vec3;
+    /** angular radius ∈ (0, π) */
+    alpha: number;
+}
+
+export function overPoleFamily(s: number, alpha0: number): SmallCircle {
+    const t = Math.min(1, Math.max(0, s));
+    const center = vec3();
+    let alpha: number;
+    if (t <= 0.5) {
+        set3(center, 0, 0, 1);
+        alpha = alpha0 + 2 * t * (Math.PI - 2 * alpha0);
+    } else {
+        const psi = (2 * t - 1) * Math.PI;
+        set3(center, Math.sin(psi), 0, Math.cos(psi));
+        alpha = Math.PI - alpha0;
+    }
+    return { loop: smallCircleLoop(center, alpha), center, alpha };
+}
+
+/**
+ * The circle of angular radius α about `center`, with the fixed transport
+ * frame w = ŷ, u = w × c (valid while the center avoids ±ŷ — the over-the-
+ * pole path lives in the x–z plane, so always). With c = N this is exactly
+ * latitudeLoop(α).
+ */
+export function smallCircleLoop(center: Vec3, alpha: number): SphereLoop {
+    const c = vec3();
+    copy3(c, center);
+    normalize3(c, c);
+    // u = ŷ × c, renormalized; w completes the frame in the circle's plane
+    const u = vec3(c.z, 0, -c.x);
+    normalize3(u, u);
+    const w = vec3();
+    cross3(w, c, u); // = ŷ when c ⊥ ŷ… keep exact orthonormality instead
+    const cosA = Math.cos(alpha);
+    const sinA = Math.sin(alpha);
+    return {
+        evalLoop: (theta, out) => {
+            const cu = Math.cos(theta) * sinA;
+            const cw = Math.sin(theta) * sinA;
+            return set3(
+                out,
+                cosA * c.x + cu * u.x + cw * w.x,
+                cosA * c.y + cu * u.y + cw * w.y,
+                cosA * c.z + cu * u.z + cw * w.z,
             );
         },
     };

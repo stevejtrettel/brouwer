@@ -1,0 +1,64 @@
+---
+import 'katex/dist/katex.min.css';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Hide the standard header/footer (used by full-viewport play pages). */
+  bare?: boolean;
+  /** Show the site header bar (off on the homepage — the cards are the nav). */
+  header?: boolean;
+}
+
+const {
+  title,
+  description = 'Interactive companion to a paper on the Brouwer fixed point theorem and its relatives, proved by linking numbers.',
+  bare = false,
+  header = true,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body>
+    {
+      !bare && header && (
+        <header class="site-header">
+          <div class="inner">
+            <a class="wordmark" href="/">
+              <svg width="26" height="18" viewBox="0 0 26 18" fill="none" aria-hidden="true">
+                <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="2.2" />
+                <circle cx="17" cy="9" r="7" stroke="currentColor" stroke-width="2.2" />
+                <path d="M 12.9 3.4 A 7 7 0 0 1 15.9 6.4" stroke="var(--paper)" stroke-width="4" />
+                <path d="M 12.9 3.4 A 7 7 0 0 1 15.9 6.4" stroke="currentColor" stroke-width="2.2" />
+              </svg>
+              Linking Proofs of Brouwer, Borsuk–Ulam, and Poincaré
+            </a>
+            <nav>
+              <a href="/brouwer/">Brouwer</a>
+              <a href="/borsuk-ulam/">Borsuk–Ulam</a>
+              <a href="/poincare/">Poincaré</a>
+            </nav>
+          </div>
+        </header>
+      )
+    }
+    <slot />
+    {
+      !bare && (
+        <footer class="site-footer">
+          {/* Intentionally empty for now — footer text goes here later. */}
+          <div class="inner" />
+        </footer>
+      )
+    }
+  </body>
+</html>

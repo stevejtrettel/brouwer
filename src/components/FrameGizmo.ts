@@ -38,6 +38,11 @@ export class FrameGizmo extends Group {
     /** Place the gizmo at γ(θ) (math z-up coordinates). Pass v = null to
      *  show the bare frame. */
     set(pos: Vec3, e1: Vec3, e2: Vec3, v: Vec3 | null): void {
+        // demos hide the gizmo by setting `visible = false` on the group, so a
+        // later set() has to turn it back on — otherwise placing the frame
+        // silently does nothing, which is exactly what happened to the f_γ
+        // figure (a refresh had hidden it before the preset placed it).
+        this.visible = true;
         this.dot.visible = true;
         mathToWorld(pos, this.dot.position);
         this.e1Arrow.set(pos, e1, FRAME_LENGTH);

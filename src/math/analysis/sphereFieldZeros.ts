@@ -44,12 +44,76 @@ export interface SphereCensus {
 }
 
 const CHART_HALF_WIDTH = 1.8;
+const MAX_DEPTH = 11;
+
+/** Chart cell width at MAX_DEPTH — the coarsest accuracy a recorded zero can
+ *  have, since degree.ts falls back to the CELL CENTRE when Newton stalls on a
+ *  zero its boundary winding has already certified (PL creases do this). */
+const CELL = (2 * CHART_HALF_WIDTH) / 2 ** MAX_DEPTH;
+
+/**
+ * How far apart two records of the SAME zero can land when the two charts
+ * disagree — a few cells' worth, generously rounded. It has to sit in the gap
+ * between that (≈ 2 cells ≈ 0.004) and the closest two GENUINELY distinct
+ * zeros can be, which the sculptable grids bound below by their spacing
+ * (π/48 ≈ 0.065 rad for the demos' 48×96 grid). 8 cells ≈ 0.014 is comfortably
+ * inside that gap.
+ */
+export const CHART_MERGE_TOL = 8 * CELL;
+
+/**
+ * Merge the per-chart zero lists into one. Only CROSS-chart pairs are
+ * candidates: within a chart, degree.ts has already deduped at its own (much
+ * tighter) tolerance, so two survivors there are two real zeros, however close.
+ * Of a merged pair we keep the better-localized record — smaller residual, and
+ * a real index in preference to an unreliable `null`.
+ */
+export function mergeChartZeros(
+    perChart: SphereFieldZero[][],
+    tol = CHART_MERGE_TOL,
+): SphereFieldZero[] {
+    const merged: SphereFieldZero[] = [];
+    // which chart contributed each merged entry — a zero is only ever a
+    // candidate twin for records from a DIFFERENT chart
+    const from: number[] = [];
+    for (let chart = 0; chart < perChart.length; chart++) {
+        for (const zero of perChart[chart]!) {
+            const twinIndex = merged.findIndex(
+                (existing, i) =>
+                    from[i] !== chart &&
+                    Math.hypot(
+                        existing.position.x - zero.position.x,
+                        existing.position.y - zero.position.y,
+                        existing.position.z - zero.position.z,
+                    ) < tol,
+            );
+            if (twinIndex < 0) {
+                merged.push(zero);
+                from.push(chart);
+                continue;
+            }
+            const twin = merged[twinIndex]!;
+            const better =
+                twin.index === null && zero.index !== null
+                    ? true
+                    : zero.index === null && twin.index !== null
+                      ? false
+                      : zero.residual < twin.residual;
+            if (better) {
+                twin.position = zero.position;
+                twin.index = zero.index;
+                twin.residual = zero.residual;
+            }
+        }
+    }
+    return merged;
+}
 
 export function findSphereFieldZeros(
     field: TangentVectorField,
     time = 0,
 ): SphereCensus {
-    const zeros: SphereFieldZero[] = [];
+    const perChart: SphereFieldZero[][] = [];
 
     for (const pole of [1, -1]) {
         // pole = +1: projection FROM the north pole (chart centered on S);
@@ -76,25 +140,33 @@ export function findSphereFieldZeros(
                 x1: CHART_HALF_WIDTH,
                 y1: CHART_HALF_WIDTH,
             },
-            { maxDepth: 11 },
+            {
+                maxDepth: MAX_DEPTH,
+                // Combed fields routinely create ±1 pairs a few degrees
+                // apart. At the census default minDepth = 2 (chart cells
+                // ≈ 0.9 wide) such a pair cancels inside a single cell and
+                // is pruned before it is ever subdivided, so Σ index comes
+                // back 1 instead of 2 — the ONE invariant this demo claims.
+                // Depth 4 resolves them, at ≈ 9 ms per census (and the
+                // census only runs on a comb commit).
+                minDepth: 4,
+            },
         );
 
-        for (const zero of census.zeros) {
-            const s = zero.x * zero.x + zero.y * zero.y;
-            const d = s + 1;
-            const position = vec3((2 * zero.x) / d, (2 * zero.y) / d, (pole * (s - 1)) / d);
-            const duplicate = zeros.find(
-                (existing) =>
-                    Math.hypot(
-                        existing.position.x - position.x,
-                        existing.position.y - position.y,
-                        existing.position.z - position.z,
-                    ) < 1e-5,
-            );
-            if (duplicate) continue;
-            zeros.push({ position, index: zero.index, residual: zero.residual });
-        }
+        perChart.push(
+            census.zeros.map((zero) => {
+                const s = zero.x * zero.x + zero.y * zero.y;
+                const d = s + 1;
+                return {
+                    position: vec3((2 * zero.x) / d, (2 * zero.y) / d, (pole * (s - 1)) / d),
+                    index: zero.index,
+                    residual: zero.residual,
+                };
+            }),
+        );
     }
+
+    const zeros = mergeChartZeros(perChart);
 
     let indexSum: number | null = 0;
     for (const zero of zeros) {

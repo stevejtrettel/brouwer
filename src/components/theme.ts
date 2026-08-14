@@ -55,7 +55,21 @@ export const theme = {
     },
 
     /** the swept segment surface between Γ_f and Γ_f̄ (Borsuk) */
-    ribbon: { color: 0x8d7ae0, opacity: 0.72, bandTint: 0.82 },
+    ribbon: {
+        color: 0x8d7ae0,
+        opacity: 0.72,
+        bandTint: 0.82,
+        /** Figure staging: the band's two faces are painted differently, so
+         *  every half-twist FLIPS the colour the reader sees. Counting the
+         *  half-twists is the whole content of §3, and a one-colour band makes
+         *  it something to take on trust. Light and mid values of the SAME hue —
+         *  a second hue would read as a second object. */
+        faceFront: 0xb3a6f2,
+        faceBack: 0x4c3f9e,
+        /** the ℓ_θ drawn across the band as tubes — Figure 4's hatching, and
+         *  what ties the surface back to the segments it is swept from */
+        rung: 0x33313b,
+    },
 
     /** multiplies the texture on orientation-reversed (folded-over) regions */
     foldTint: 0xd98d7e,
@@ -63,8 +77,30 @@ export const theme = {
     /** figure mode (path tracing) — the paper look */
     paper: {
         /** the shell becomes real glass under the path tracer */
-        glass: { color: 0xcfe8ee, roughness: 0.06, ior: 1.2 },
+        glass: {
+            color: 0xcfe8ee,
+            roughness: 0.06,
+            ior: 1.2,
+            /** For figures whose subject FILLS the torus (the Borsuk band):
+             *  seen at grazing angles across the whole subject, Fresnel lays a
+             *  white sheen over the contents. A film, not a lens. */
+            iorThin: 1.08,
+        },
+        /** The core curve as a quiet matte ring — the same slate the fibre disks
+         *  are bounded with, so the torus's scaffolding reads as one family and
+         *  the core stops competing with the curves that are the subject. */
+        core: { color: 0x6b7a99, roughness: 0.45 },
+        /** Concentric rings on the domain and codomain plates: the disk sliced
+         *  into circles. Quiet, because they are the BACKDROP against which one
+         *  highlighted circle is followed through the map. */
+        rings: { color: 0x4e6480, opacity: 0.72 },
         ground: 0xffffff,
+        /** Domain/codomain/slice plates. Deep enough to separate from the white
+         *  ground in a traced figure — paler and they read as ghostly ellipses
+         *  rather than as objects on a table. */
+        plate: 0xdfd6c2,
+        /** the dark rim that gives a plate its edge */
+        plateRim: 0x33313b,
         /** gradient environment: bright top, warm paper below */
         environmentTop: 0xffffff,
         environmentBottom: 0xd8d2c6,

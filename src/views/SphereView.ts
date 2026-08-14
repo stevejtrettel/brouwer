@@ -18,6 +18,7 @@ import type { Vec3 } from "../math/types.ts";
 
 import { addCartoonLights, theme } from "../components/theme.ts";
 import { mathToWorld } from "../components/arrows.ts";
+import { attachOrbitGate } from "./orbitGate.ts";
 import { SphereSurface } from "../components/SphereSurface.ts";
 import { LatitudeRing } from "../components/LatitudeRing.ts";
 import { Marker } from "../components/Marker.ts";
@@ -99,10 +100,11 @@ export function createSphereView(options: SphereViewOptions): SphereView {
     app.addAnimateCallback(() => controls.update());
     // orbit only when the pointer is over THIS viewport (and the demo's
     // gate — e.g. comb mode — allows it)
-    let orbitGate: () => boolean = () => true;
-    app.renderer.domElement.addEventListener("pointermove", (e) => {
-        const vp = app.views.viewportAt(e.clientX, e.clientY, window.innerWidth, window.innerHeight);
-        controls.enabled = vp?.name === name && orbitGate();
+    const gate = attachOrbitGate({
+        canvas: app.renderer.domElement,
+        views: app.views,
+        name,
+        controls,
     });
 
     const world = new Vector3();
@@ -123,8 +125,8 @@ export function createSphereView(options: SphereViewOptions): SphereView {
         setPhi(phi) {
             latitude.setPhi(phi);
         },
-        setOrbitGate(gate) {
-            orbitGate = gate;
+        setOrbitGate(next) {
+            gate.setGate(next);
         },
         placeMarkers(positions) {
             for (let i = 0; i < markers.length; i++) {

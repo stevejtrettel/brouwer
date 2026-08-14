@@ -1,0 +1,46 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+
+const theorems = (await getCollection('theorems', ({ data }) => !data.draft)).sort(
+  (a, b) => a.data.order - b.data.order,
+);
+---
+
+<Base title="Linking Proofs of Brouwer, Borsuk–Ulam, and Poincaré" header={false}>
+  <main class="home">
+    <section class="hero">
+      <h1>Linking Proofs of Brouwer, Borsuk–Ulam, and Poincaré</h1>
+      {/* Author list TBD — restore when finalized. */}
+      {/* <p class="byline">Thomas F. Banchoff and Dan Margalit</p> */}
+      <p class="lede">
+        Three famous theorems of topology — Brouwer's fixed point theorem, the
+        Borsuk–Ulam theorem, and Poincaré's theorem on vector fields — say
+        that certain coincidences are unavoidable. All three of these can be
+        proven by a visual, topological technique: slice the domain into circles, graph the resulting functions
+        in the solid torus, and appeal to our intuition about knots and links
+        in 3-space. Each page below explains one theorem and lets you play
+        with an interactive version of its proof.
+      </p>
+      <p class="paper-link">
+        <!-- TODO: replace with the real link when the paper is up. -->
+        Read the paper (coming soon)
+      </p>
+    </section>
+
+    <section>
+      <ul class="card-grid">
+        {
+          theorems.map((t) => (
+            <li class="theorem-card">
+              <a href={`/${t.id}/`}>
+                <h3>{t.data.title}</h3>
+                <p>{t.data.blurb}</p>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+  </main>
+</Base>

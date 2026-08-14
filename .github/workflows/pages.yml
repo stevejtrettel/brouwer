@@ -1,13 +1,15 @@
-name: Deploy demos
+name: Deploy site
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# This file is the canonical copy. `node scripts/add-pages.mjs <repo>` copies it
-# verbatim into the other demo repos, so bumping an action version here and
-# re-running the installer propagates it everywhere.
+# NOTE: this repo has diverged from the shared copy in stevejtrettel/threejs-demos.
+# It publishes the companion SITE (site/, Astro) with the demos mounted under
+# /demos/, not the bare demo gallery. Do not overwrite it by re-running
+# `node ../threejs-demos/scripts/add-pages.mjs .` — that would install the
+# demos-only workflow again.
 
 permissions:
   contents: read
@@ -31,24 +33,29 @@ jobs:
           node-version: '22'
           cache: npm
 
-      # `npm ci` is the fast, reproducible path, but several demo repos carry a
-      # lockfile that has drifted from package.json. Publishing demos should not
-      # be blocked on that, so fall back rather than failing the deploy.
+      # `npm ci` is the fast, reproducible path, but the lockfile here drifts
+      # while the figure work is in flux. Publishing should not be blocked on
+      # that, so fall back rather than failing the deploy.
       - run: npm ci || npm install
+      - run: npm ci || npm install
+        working-directory: site
 
-      # Exposes the site's base path (e.g. /threejs-demos) so the build stays
-      # correct if the repo is ever renamed.
+      # Exposes the site's base path — '' for a custom domain, '/brouwer' if it
+      # is ever served as a project page — so the build stays correct either way.
       - uses: actions/configure-pages@v6
         id: pages
 
-      - name: Build all demos
-        run: npm run build:all
+      # Builds the demos, the Astro pages and the figure copy in one step,
+      # assembling site/dist. See scripts/site.mjs.
+      - name: Build site
+        run: npm run build:site
         env:
-          BASE: ${{ steps.pages.outputs.base_path }}/
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+          SITE_URL: ${{ steps.pages.outputs.origin }}
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: dist-pages
+          path: site/dist
 
   deploy:
     needs: build

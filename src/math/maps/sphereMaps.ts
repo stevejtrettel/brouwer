@@ -87,6 +87,46 @@ export function distortedProjection(k = 0.6): SphereDiskMap {
 }
 
 /**
+ * Power projection: f = clamp((x + iy)^k + c·z + b) — the offset
+ * projection with the equator wound k times. On the equator w = x + iy has
+ * |w| = 1, so f_eq winds k× around the (offset) origin and the swept
+ * ribbon is a k-TWISTED Möbius band. k must be ODD: for even k,
+ * (−w)^k = w^k makes f = f̄ on the whole equator (degenerate). k = 1 is
+ * exactly offsetProjection.
+ */
+export function powerProjection(k = 1, c = 0.35, bx = 0.1, by = 0.15, psi = 0): SphereDiskMap {
+    const params = { k, c, bx, by, psi };
+    const tmp = vec2();
+    return {
+        id: "power-projection",
+        name: "power projection wᵏ",
+        params,
+        evalSphere: (x, _t, out) => {
+            // ψ spins the DOMAIN about the polar axis. Pure staging — it
+            // changes no invariant — but θ is also the way around the torus,
+            // so it decides where in the FRAME the interesting things happen.
+            // Unrotated, the odd part x + c·z vanishes on the y = 0 meridian,
+            // which puts the antipodal pair (and the twist flip around it) at
+            // θ = π: the far side, small and half occluded, in every figure.
+            const cos = Math.cos(params.psi);
+            const sin = Math.sin(params.psi);
+            const px = cos * x.x + sin * x.y;
+            const py = -sin * x.x + cos * x.y;
+            const r = Math.hypot(px, py);
+            const kk = Math.round(params.k);
+            const ang = kk * Math.atan2(py, px);
+            const mag = r ** kk;
+            set2(
+                tmp,
+                mag * Math.cos(ang) + params.c * x.z + params.bx,
+                mag * Math.sin(ang) + params.by,
+            );
+            return softClampToDisk(out, tmp);
+        },
+    };
+}
+
+/**
  * Low-frequency "harmonic" toy map: perturb the projection with degree-2
  * spherical polynomials, f = clamp(x + α·2xz, y + α·(x² − y²)). Visually
  * interesting graph curves without losing continuity.

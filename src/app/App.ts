@@ -24,6 +24,7 @@ export class App {
     private clock = new Clock();
     private callbacks: AnimateCallback[] = [];
     private environmentTexture: Texture | null = null;
+    private frame: { width: number; height: number } | null = null;
 
     constructor(options: { container?: HTMLElement } = {}) {
         this.renderer = new WebGLRenderer({
@@ -66,9 +67,33 @@ export class App {
         this.renderer.setAnimationLoop(null);
     }
 
+    /**
+     * Pin the canvas to an exact CSS size, centred in the window, instead of
+     * filling it. Figure mode uses this so that what gets traced — and saved —
+     * is the figure's own aspect rather than whatever shape the browser window
+     * happens to be. Pass null to go back to filling the window.
+     *
+     * While framed the canvas is NO LONGER flush with the viewport origin, so
+     * the pointer helpers in ViewManager (which take client coordinates) are
+     * off by the canvas offset. That is fine for figure mode, where only
+     * OrbitControls is live and it works in deltas — but do not frame the
+     * canvas while sculpting or combing is reachable.
+     */
+    setFrame(frame: { width: number; height: number } | null): void {
+        this.frame = frame;
+        const el = this.renderer.domElement;
+        Object.assign(el.style, {
+            position: frame ? "fixed" : "",
+            left: frame ? "50%" : "",
+            top: frame ? "50%" : "",
+            transform: frame ? "translate(-50%, -50%)" : "",
+        });
+        this.onResize();
+    }
+
     private onResize(): void {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
+        const w = this.frame?.width ?? window.innerWidth;
+        const h = this.frame?.height ?? window.innerHeight;
         this.renderer.setPixelRatio(window.devicePixelRatio || 1);
         this.renderer.setSize(w, h);
         // CSS pixels: setViewport/setScissor apply the pixel ratio themselves
